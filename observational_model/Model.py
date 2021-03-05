@@ -1,4 +1,4 @@
-from simulator.PatientState import PatientState
+from observational_model.PatientState import PatientState
 import numpy as np
 
 min_sysbp_men = 90

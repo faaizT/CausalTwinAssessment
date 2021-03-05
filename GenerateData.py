@@ -2,7 +2,7 @@ import sys
 import pandas as pd
 
 import logging
-from simulator.Model import InitialStateGenerator, physician_policy, Model
+from observational_model.Model import InitialStateGenerator, physician_policy, Model
 
 
 def generate_trajectory(df: pd.DataFrame, id: int):
