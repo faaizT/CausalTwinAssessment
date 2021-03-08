@@ -57,6 +57,9 @@ class Model:
     def get_state(self):
         return self.current_state
 
+    def copy(self):
+        return Model(self.current_state.copy())
+
 
 class InitialStateGenerator:
     def __init__(self):

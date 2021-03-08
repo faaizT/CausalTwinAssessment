@@ -38,6 +38,21 @@ class PatientState:
             'st_pain_stimulus': self.pain_stimulus
         }
 
+    def copy(self):
+        return PatientState(
+            self.gender,
+            self.hr,
+            self.rr,
+            self.sysbp,
+            self.diabp,
+            self.fio2,
+            self.weight,
+            self.height,
+            self.wbc_count,
+            self.socio_econ,
+            self.pain_stimulus
+        )
+
 
 class Xt:
     def __init__(self, gender, hr, sysbp, diabp):
@@ -68,6 +83,13 @@ class Xt:
             'xt_diabp': self.diabp
         }
 
+    def copy(self):
+        return Xt(
+            self.gender,
+            self.hr,
+            self.sysbp,
+            self.diabp
+        )
 
 class Ut:
     def __init__(self, socio_econ, facial_expression):
@@ -80,3 +102,8 @@ class Ut:
             'ut_facial_expression': self.facial_expression
         }
 
+    def copy(self):
+        return Ut(
+            self.socio_econ,
+            self.facial_expression
+        )
