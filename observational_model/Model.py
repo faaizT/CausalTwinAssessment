@@ -20,8 +20,11 @@ max_height_women = 180
 
 
 class Model:
-    def __init__(self, current_state):
-        self.current_state = current_state
+    def __init__(self, current_state=None):
+        if current_state is None:
+            self.current_state = InitialStateGenerator().generate_state()
+        else:
+            self.current_state = current_state
         self.current_gender = getattr(self.current_state, 'gender')
         self.current_hr = getattr(self.current_state, 'hr')
         self.current_rr = getattr(self.current_state, 'rr')
