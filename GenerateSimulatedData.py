@@ -67,6 +67,7 @@ def simulate_trajectories(obs_data_file, simulator_name, num_of_trajectories, ex
     logging.info(f"Found {len(ids)} ids.")
     results_df = pd.DataFrame()
     j = 0
+    saved_trajectories = 0
     while j < num_of_trajectories:
         logging.info(f"Found {j} good simulated trajectories")
         simulator_init = get_simulator(simulator_name)
@@ -98,9 +99,10 @@ def simulate_trajectories(obs_data_file, simulator_name, num_of_trajectories, ex
                         xt_sim = st.get_xt()
                 else:
                     break
-        if j > 0 and j % 10 == 0:
+        if j > 0 and j > saved_trajectories:
             logging.info("Updating csv file")
             results_df.to_csv(f"{export_dir}/simulated-data-{simulator_name}-{obs_data_file_name}.csv", index=False)
+            saved_trajectories = j
     logging.info("Updating csv file")
     results_df.to_csv(f"{export_dir}/simulated-data-{simulator_name}-{obs_data_file_name}.csv", index=False)
 
