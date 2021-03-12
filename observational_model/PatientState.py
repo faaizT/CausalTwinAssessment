@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import torch
 
 
 class PatientState:
@@ -21,7 +22,7 @@ class PatientState:
                   self.sysbp + np.random.normal(0, 4), self.diabp + np.random.normal(0, 4))
 
     def get_ut(self):
-        facial_expression = self.pain_stimulus + np.random.randint(-1,2)
+        facial_expression = self.pain_stimulus + np.random.randint(-1, 2)
         return Ut(self.socio_econ, max(min(facial_expression, 9), 0))
 
     def as_dict(self):
@@ -37,6 +38,21 @@ class PatientState:
             'st_socio_econ': self.socio_econ,
             'st_pain_stimulus': self.pain_stimulus
         }
+
+    def as_tensor(self):
+        tensor = torch.column_stack((self.gender,
+                                     self.hr,
+                                     self.rr,
+                                     self.sysbp,
+                                     self.diabp,
+                                     self.fio2,
+                                     self.weight,
+                                     self.height,
+                                     self.wbc_count,
+                                     self.socio_econ,
+                                     self.pain_stimulus)
+                                    )
+        return tensor.reshape(1, tensor.size(0), tensor.size(1))
 
     def copy(self):
         return PatientState(
@@ -70,7 +86,7 @@ class Xt:
         return cls(gender, hr, sysbp, diabp)
 
     def distance(self, xt):
-        return np.abs(self.gender - xt.gender)*100 + \
+        return np.abs(self.gender - xt.gender) * 100 + \
                np.abs(self.hr - xt.hr) + \
                np.abs(self.sysbp - xt.sysbp) + \
                np.abs(self.diabp - xt.diabp)
@@ -90,6 +106,7 @@ class Xt:
             self.sysbp,
             self.diabp
         )
+
 
 class Ut:
     def __init__(self, socio_econ, facial_expression):

@@ -1,5 +1,8 @@
+import pyro
+import torch
 from observational_model.PatientState import PatientState
 import numpy as np
+import pyro.distributions as dist
 
 min_sysbp_men = 90
 max_sysbp_men = 160
@@ -63,28 +66,32 @@ class Model:
 
 class InitialStateGenerator:
     def __init__(self):
-        self.gender = np.random.randint(0,2)
+        self.gender = pyro.sample("z_0_gender", dist.Bernoulli(0.5))
         # 0 is male, 1 female
-        if self.gender == 0:
-            self.hr = np.random.normal(72,16)
-            self.rr = np.random.normal(18, 5)
-            self.weight = np.random.uniform(min_weight_men, max_weight_men)
-            self.height = np.random.uniform(min_height_men, max_height_men)
-            self.sysbp = np.random.uniform(min_sysbp_men, max_sysbp_men)
-            self.diabp = np.random.uniform(min_diabp_men, max_diabp_men)
-        else:
-            self.hr = np.random.normal(78,16)
-            self.rr = np.random.normal(20, 5)
-            self.weight = np.random.uniform(min_weight_women, max_weight_women)
-            self.height = np.random.uniform(min_height_women, max_height_women)
-            self.sysbp = np.random.uniform(min_sysbp_women, max_sysbp_women)
-            self.diabp = np.random.uniform(min_diabp_women, max_diabp_women)
-        self.fio2 = 0.21 + np.random.normal(0.2,0.05)**2
-        self.wbc_count = np.random.normal(7500,1000)
+        self.hr = torch.where(self.gender == 0,
+                              pyro.sample("z_0_hr", dist.Normal(72,16)),
+                              pyro.sample("z_0_hr", dist.Normal(78,16)))
+        self.rr = torch.where(self.gender == 0,
+                              pyro.sample("z_0_rr", dist.Normal(18, 5)),
+                              pyro.sample("z_0_rr", dist.Normal(20, 5)))
+        self.weight = torch.where(self.gender == 0,
+                                  pyro.sample("z_0_weight", dist.Uniform(min_weight_men, max_weight_men)),
+                                  pyro.sample("z_0_weight", dist.Uniform(min_weight_women, max_weight_women)))
+        self.height = torch.where(self.gender == 0,
+                                  pyro.sample("z_0_height", dist.Uniform(min_height_men, max_height_men)),
+                                  pyro.sample("z_0_height", dist.Uniform(min_height_women, max_height_women)))
+        self.sysbp = torch.where(self.gender == 0,
+                                 pyro.sample("z_0_sysbp", dist.Uniform(min_sysbp_men, max_sysbp_men)),
+                                 pyro.sample("z_0_sysbp", dist.Uniform(min_sysbp_women, max_sysbp_women)))
+        self.diabp = torch.where(self.gender == 0,
+                                 pyro.sample("z_0_diabp", dist.Uniform(min_diabp_men, max_diabp_men)),
+                                 pyro.sample("z_0_diabp", dist.Uniform(min_diabp_women, max_diabp_women)))
+        self.fio2 = 0.21 + pyro.sample("z_0_fio2", dist.Normal(0.2,0.05))**2
+        self.wbc_count = pyro.sample("z_0_wbc_count", dist.Normal(7500,1000))
         # Higher socio_econ value suggests richer patients
-        self.socio_econ = np.random.randint(0,3)
+        self.socio_econ = np.floor(pyro.sample("z_0_socio_econ", dist.Uniform(0,3)))
         # Higher value suggests higher pain stimulus
-        self.pain_stimulus = np.random.randint(0,10)
+        self.pain_stimulus = np.floor(pyro.sample("z_0_pain_stimulus", dist.Uniform(0,10)))
 
     def generate_state(self):
         return PatientState(self.gender, self.hr, self.rr,
