@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 
 cols = ['A_t', 't', 'xt_gender', 'xt_hr', 'xt_sysbp', 'xt_diabp']
 
-# TODO: FIX THE STACKING BUG
+
 class ObservationalDataset(Dataset):
     def __init__(self, csv_file):
         """
@@ -14,14 +14,15 @@ class ObservationalDataset(Dataset):
         data = pd.read_csv(csv_file)
         data_filtered = data[cols]
         self.ehr_data = []
+        trajectory = []
         for i in range(len(data)):
             if i > 0 and data.iloc[i]['id'] == data.iloc[i-1]['id']:
-                trajectory = torch.stack((trajectory, torch.tensor(data_filtered.iloc[i].values)))
+                trajectory.append(torch.tensor(data_filtered.iloc[i].values))
             else:
                 if i > 0:
-                    self.ehr_data.append(trajectory)
-                trajectory = torch.tensor(data_filtered.iloc[i].values)
-        self.ehr_data.append(trajectory)
+                    self.ehr_data.append(torch.stack(trajectory))
+                trajectory = [torch.tensor(data_filtered.iloc[i].values)]
+        self.ehr_data.append(torch.stack(trajectory))
 
     def __len__(self):
         return len(self.ehr_data)
