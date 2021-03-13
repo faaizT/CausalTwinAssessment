@@ -46,7 +46,7 @@ class SimulatorModel(nn.Module):
             self.cuda()
 
     @staticmethod
-    def transition_2(state:PatientState, action, t):
+    def transition_to_next_state(state: PatientState, action, t):
         current_hr = pyro.sample(f"s_{t}_hr", dist.Normal(action*8, action**2*4+0.1))
         current_rr = pyro.sample(f"s_{t}_rr", dist.Normal(action*2, action**2*1+0.1))
         current_sysbp = pyro.sample(f"s_{t}_sysbp", dist.Normal(action*5*(1-state.gender) + state.gender*action*3, action*5 + 0.1))
@@ -77,7 +77,7 @@ class SimulatorModel(nn.Module):
                 SimulatorModel.get_xt_from_state(s_t, t, obs_data=mini_batch)
                 action = pyro.sample(f"A_{t}", dist.Categorical(self.policy(s_t.as_tensor())[0]), obs=mini_batch[:, t, cols.index('A_t')])
                 if t < T_max - 1:
-                    s_t = SimulatorModel.transition_2(s_t, action, t+1)
+                    s_t = SimulatorModel.transition_to_next_state(s_t, action, t + 1)
 
     def guide(self, mini_batch, mini_batch_reversed):
         T_max = mini_batch.size(1)
