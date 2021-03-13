@@ -55,10 +55,15 @@ class SimulatorModel(nn.Module):
         current_weight = pyro.sample(f"s_{t}_weight", dist.Normal(state.weight, 0.001))
         current_wbc_count = pyro.sample(f"s_{t}_wbc_count", dist.Normal(state.wbc_count - action/3*1000, ((action+1)/4)**2*1000))
         current_fio2 = pyro.sample(f"s_{t}_fio2", dist.Normal(state.fio2, torch.tensor(0.001)))
+        probs = torch.zeros((state.pain_stimulus.size(0), 10))
+        probs[torch.arange(state.pain_stimulus.size(0)), state.pain_stimulus] = 1
+        pain_stimulus_non_zero = torch.where(state.pain_stimulus > 0, 1, 0)
+        probs[torch.arange(state.pain_stimulus.size(0)), state.pain_stimulus - pain_stimulus_non_zero] = 1
+        current_pain_stimulus = pyro.sample(f"s_{t}_pain_stimulus", dist.Categorical(probs=probs))
         return PatientState(gender=state.gender, hr=current_hr, rr=current_rr,
                             sysbp=current_sysbp, diabp=current_diabp, height=current_height,
                             weight=current_weight, wbc_count=current_wbc_count, socio_econ=state.socio_econ,
-                            pain_stimulus=state.pain_stimulus, fio2=current_fio2)
+                            pain_stimulus=current_pain_stimulus, fio2=current_fio2)
 
     @staticmethod
     def get_xt_from_state(st, t, obs_data):
@@ -89,8 +94,7 @@ class SimulatorModel(nn.Module):
             rnn_output, _ = self.rnn(mini_batch_reversed, h_0_contig)
             rnn_output = torch.flip(rnn_output, [1])
             for t in range(1,T_max):
-                # TODO: implement pain stimulus
-                # pain_stimulus = pyro.sample(f"s_{t}_pain_stimulus", dist.Categorical(self.pain_stimulus_classifier(s_t.as_tensor(), rnn_output[:, t-1, :])[0]))
+                pain_stimulus = pyro.sample(f"s_{t}_pain_stimulus", dist.Categorical(self.pain_stimulus_classifier(s_t.as_tensor(), rnn_output[:, t-1, :])[0]))
                 s_loc, s_scale = self.combiner(s_t.as_tensor(), rnn_output[:, t-1, :])
                 hr = pyro.sample(f"s_{t}_hr", dist.Normal((s_loc[:, :, 0]).reshape(-1), (s_scale[:, :, 0]).reshape(-1)))
                 rr = pyro.sample(f"s_{t}_rr", dist.Normal((s_loc[:, :, 1]).reshape(-1), (s_scale[:, :, 1]).reshape(-1)))
@@ -103,4 +107,4 @@ class SimulatorModel(nn.Module):
                 s_t = PatientState(gender=s_t.gender, hr=hr, rr=rr,
                                    sysbp=sysbp, diabp=diabp, weight=weight,
                                    height=height, wbc_count=wbc_count, socio_econ=s_t.socio_econ,
-                                   pain_stimulus=s_t.pain_stimulus, fio2=fio2)
+                                   pain_stimulus=pain_stimulus, fio2=fio2)
