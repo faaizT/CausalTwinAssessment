@@ -4,7 +4,10 @@ import torch
 
 
 class PatientState:
-    def __init__(self, gender, hr, rr, sysbp, diabp, fio2, weight, height, wbc_count, socio_econ, pain_stimulus):
+    def __init__(self, gender=None, hr=None, rr=None,
+                 sysbp=None, diabp=None, fio2=None,
+                 weight=None, height=None, wbc_count=None,
+                 socio_econ=None, pain_stimulus=None):
         self.gender = gender
         self.hr = hr
         self.rr = rr
@@ -71,7 +74,7 @@ class PatientState:
 
 
 class Xt:
-    def __init__(self, gender, hr, sysbp, diabp):
+    def __init__(self, gender=None, hr=None, sysbp=None, diabp=None):
         self.gender = gender
         self.hr = hr
         self.sysbp = sysbp

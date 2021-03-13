@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 
 cols = ['A_t', 't', 'xt_gender', 'xt_hr', 'xt_sysbp', 'xt_diabp']
 
+# TODO: FIX THE STACKING BUG
 class ObservationalDataset(Dataset):
     def __init__(self, csv_file):
         """

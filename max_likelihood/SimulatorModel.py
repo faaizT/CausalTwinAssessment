@@ -1,20 +1,16 @@
 import pyro
-import numpy as np
-import torch
-from pyro.infer import SVI, Trace_ELBO
-from pyro.optim import ClippedAdam
-from torch import nn
-from max_likelihood.ObservationalDataset import cols, ObservationalDataset
-from observational_model.PatientState import PatientState
 import pyro.distributions as dist
-from observational_model.Model import InitialStateGenerator
-import pyro.contrib.examples.polyphonic_data_loader as poly
+import torch
+from torch import nn
 
+from max_likelihood.HelperNetworks import PolicyNetwork, Combiner, PainStimulusClassifier
+from max_likelihood.ObservationalDataset import cols
+from max_likelihood.S_0 import S_0
+from observational_model.PatientState import PatientState
 # TODO: move to appropriate location
 # TODO: deal with tensors in St, Xt and Ut
 # TODO: Comments
 from observational_model.PatientState import Xt
-from max_likelihood.HelperNetworks import PolicyNetwork, Combiner, PainStimulusClassifier
 
 min_sysbp_men = 90
 max_sysbp_men = 160
@@ -51,124 +47,50 @@ class SimulatorModel(nn.Module):
 
     @staticmethod
     def transition_2(state:PatientState, action, t):
-        current_gender = pyro.sample(f"s_{t}_gender", dist.Normal(state.gender, torch.tensor(0.001)))
+        current_hr = pyro.sample(f"s_{t}_hr", dist.Normal(action*8, action**2*4+0.1))
+        current_rr = pyro.sample(f"s_{t}_rr", dist.Normal(action*2, action**2*1+0.1))
+        current_sysbp = pyro.sample(f"s_{t}_sysbp", dist.Normal(action*5*(1-state.gender) + state.gender*action*3, action*5 + 0.1))
+        current_diabp = pyro.sample(f"s_{t}_diabp", dist.Normal(action*5*(1-state.gender) + state.gender*action*3, action*5 + 0.1))
+        current_height = pyro.sample(f"s_{t}_height", dist.Normal(state.height, 0.001))
+        current_weight = pyro.sample(f"s_{t}_weight", dist.Normal(state.weight, 0.001))
+        current_wbc_count = pyro.sample(f"s_{t}_wbc_count", dist.Normal(state.wbc_count - action/3*1000, ((action+1)/4)**2*1000))
         current_fio2 = pyro.sample(f"s_{t}_fio2", dist.Normal(state.fio2, torch.tensor(0.001)))
-        current_socio_econ = pyro.sample(f"s_{t}_socio_econ", dist.Normal(state.socio_econ,torch.tensor(0.001)))
-        current_height = pyro.sample(f"s_{t}_height", dist.Normal(state.height, torch.tensor(0.001)))
-        current_weight = pyro.sample(f"s_{t}_weight", dist.Normal(state.weight, torch.tensor(0.001)))
-        current_sysbp = pyro.sample(f"s_{t}_sysbp", dist.Normal(state.sysbp, torch.tensor(0.001)))
-        current_diabp = pyro.sample(f"s_{t}_diabp", dist.Normal(state.diabp, torch.tensor(0.001)))
-        current_hr = pyro.sample(f"s_{t}_hr", dist.Normal(state.hr, torch.tensor(0.001)))
-        current_wbc_count = pyro.sample(f"s_{t}_wbc_count", dist.Normal(state.wbc_count, torch.tensor(0.001)))
-        current_pain_stimulus = pyro.sample(f"s_{t}_pain_stimulus", dist.Normal(state.pain_stimulus, torch.tensor(0.001)))
-        current_rr = pyro.sample(f"s_{t}_rr", dist.Normal(state.rr, torch.tensor(0.001)))
-        return PatientState(current_gender, current_hr, current_rr,
-                            current_sysbp, current_diabp, current_fio2,
-                            current_weight, current_height, current_wbc_count,
-                            current_socio_econ, current_pain_stimulus)
-
-    @staticmethod
-    def transition_to_next_state(state: PatientState, action, t):
-        current_gender = pyro.sample(f"s_{t}_gender", dist.Delta(state.gender))
-        current_fio2 = pyro.sample(f"s_{t}_fio2", dist.Delta(state.fio2))
-        current_socio_econ = pyro.sample(f"s_{t}_socio_econ", dist.Delta(state.socio_econ))
-        current_height = pyro.sample(f"s_{t}_height", dist.Delta(state.height))
-        current_weight = pyro.sample(f"s_{t}_weight", dist.Delta(state.weight))
-
-        current_sysbp = pyro.sample(f"s_{t}_sysbp", dist.Delta(state.sysbp))
-        current_diabp = pyro.sample(f"s_{t}_diabp", dist.Delta(state.diabp))
-        current_hr = pyro.sample(f"s_{t}_hr", dist.Delta(state.hr))
-        current_wbc_count = pyro.sample(f"s_{t}_wbc_count", dist.Delta(state.wbc_count))
-        current_pain_stimulus = pyro.sample(f"s_{t}_pain_stimulus", dist.Delta(state.pain_stimulus))
-        current_rr = pyro.sample(f"s_{t}_rr", dist.Delta(state.rr))
-        # max_sysbp = torch.where(current_gender == 0, max_sysbp_men, max_sysbp_women)
-        # max_diabp = torch.where(current_gender == 0, max_diabp_men, max_diabp_women)
-
-        # current_sysbp = pyro.sample(f"s_{t}_sysbp",
-        #                             dist.Delta(state.sysbp + action / 3 * dist.Uniform(0, max_sysbp - state.sysbp).rsample()))
-        # current_diabp = pyro.sample(f"s_{t}_diabp",
-        #                             dist.Delta(state.diabp + action / 3 * dist.Uniform(0, max_diabp - state.diabp).rsample()))
-        # current_hr = pyro.sample(f"s_{t}_hr",
-        #                          dist.Delta(state.hr + action*dist.Normal(0, 1).rsample()**2*(1+current_socio_econ)/3))
-        # current_rr = pyro.sample(f"s_{t}_rr",
-        #                          dist.Delta(state.rr + action*dist.Normal(0, 1).rsample()**2*(1+current_socio_econ)/3))
-        # current_wbc_count = pyro.sample(f"s_{t}_wbc_count",
-        #                                 dist.Delta(state.wbc_count * (1-action/3*dist.Normal(0.1,0.001).rsample())))
-        # pain_stimulus_change = dist.Uniform(0,1).rsample()
-        #
-        # pain_stimulus_eps_ul = torch.where(state.pain_stimulus > 0, state.pain_stimulus, torch.ones(1))
-        #
-        # current_pain_stimulus = torch.where((pain_stimulus_change > (1 - action / 3)) & (state.pain_stimulus > 0),
-        #     dist.Uniform(0, pain_stimulus_eps_ul).rsample(),
-        #     state.pain_stimulus
-        #     )
-        # pyro.sample(f"s_{t}_pain_stimulus", dist.Delta(current_pain_stimulus))
-        #
-
-        # current_sysbp = pyro.sample(f"s_{t}_sysbp",
-        #                             dist.Delta(state.sysbp + action / 3 * (pyro.sample(f"s_{t}_sysbp_eps", dist.Uniform(0, max_sysbp - state.sysbp), infer={'is_auxiliary': True}))))
-        # current_diabp = pyro.sample(f"s_{t}_diabp",
-        #                             dist.Delta(state.diabp + action / 3 * (pyro.sample(f"s_{t}_diabp_eps", dist.Uniform(0, max_diabp - state.diabp), infer={'is_auxiliary': True}))))
-        # current_hr = pyro.sample(f"s_{t}_hr",
-        #                          dist.Delta(state.hr + action*(pyro.sample(f"s_{t}_hr_eps", dist.Normal(0,1), infer={'is_auxiliary': True})**2)*(1+current_socio_econ)/3))
-        # current_rr = pyro.sample(f"s_{t}_rr",
-        #                          dist.Delta(state.rr + action*(pyro.sample(f"s_{t}_rr_eps", dist.Normal(0,1), infer={'is_auxiliary': True})**2)*(1+current_socio_econ)/3))
-        # current_wbc_count = pyro.sample(f"s_{t}_wbc_count",
-        #                                 dist.Delta(state.wbc_count * (1-action/3*pyro.sample(f"s_{t}_wbc_count_eps", dist.Normal(0.1,0.001), infer={'is_auxiliary': True}))))
-        # pain_stimulus_change = pyro.sample(f"s_{t}_pain_stimulus_change", dist.Uniform(0,1), infer={'is_auxiliary': True})
-        #
-        # pain_stimulus_eps_ul = pyro.sample(f"s_{t}_pain_stimulus_eps_ul",
-        #                                    dist.Delta(torch.where(state.pain_stimulus > 0, state.pain_stimulus, torch.ones(1))))
-        #
-        # current_pain_stimulus = torch.where((pain_stimulus_change > (1 - action / 3)) & (state.pain_stimulus > 0),
-        #     np.floor(pyro.sample(f"s_{t}_pain_stimulus_raw", dist.Uniform(0, pain_stimulus_eps_ul), infer={'is_auxiliary': True})),
-        #     state.pain_stimulus
-        #     )
-        # pyro.sample(f"s_{t}_pain_stimulus", dist.Delta(current_pain_stimulus))
-        return PatientState(current_gender, current_hr, current_rr,
-                            current_sysbp, current_diabp, current_fio2,
-                            current_weight, current_height, current_wbc_count,
-                            current_socio_econ, current_pain_stimulus)
+        return PatientState(gender=state.gender, hr=current_hr, rr=current_rr,
+                            sysbp=current_sysbp, diabp=current_diabp, height=current_height,
+                            weight=current_weight, wbc_count=current_wbc_count, socio_econ=state.socio_econ,
+                            pain_stimulus=state.pain_stimulus, fio2=current_fio2)
 
     @staticmethod
     def get_xt_from_state(st, t, obs_data):
-        gender = pyro.sample(f"x_{t}_gender", dist.Delta(st.gender), obs=obs_data[:, t, cols.index('xt_gender')])
         hr = pyro.sample(f"x_{t}_hr", dist.Normal(st.hr, 5), obs=obs_data[:, t, cols.index('xt_hr')])
         sysbp = pyro.sample(f"x_{t}_sysbp", dist.Normal(st.sysbp, 4), obs=obs_data[:, t, cols.index('xt_sysbp')])
         diabp = pyro.sample(f"x_{t}_diabp", dist.Normal(st.diabp, 4), obs=obs_data[:, t, cols.index('xt_diabp')])
-        return Xt(gender, hr, sysbp, diabp)
+        return Xt(gender=st.gender, hr=hr, sysbp=sysbp, diabp=diabp)
 
     def model(self, mini_batch, mini_batch_reversed):
         T_max = mini_batch.size(1)
         pyro.module("simulator_model", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
-            initial_state_generator = InitialStateGenerator()
+            initial_state_generator = S_0(mini_batch)
             s_t = initial_state_generator.generate_state()
             for t in range(T_max):
                 SimulatorModel.get_xt_from_state(s_t, t, obs_data=mini_batch)
-                # action_eps = pyro.sample(f"A_{t}_ind", dist.Multinomial(total_count=1, probs=self.policy(s_t.as_tensor())), infer={'is_auxiliary': True})
-                # action_eps = dist.Multinomial(total_count=1, probs=self.policy(s_t.as_tensor())).sample()
-                # action = pyro.sample(f"A_{t}", dist.Delta((action_eps==1).nonzero()[:, -1]), obs=mini_batch[:, t, cols.index('A_t')])
                 action = pyro.sample(f"A_{t}", dist.Categorical(self.policy(s_t.as_tensor())[0]), obs=mini_batch[:, t, cols.index('A_t')])
                 if t < T_max - 1:
-                    # s_t = SimulatorModel.transition_to_next_state(s_t, action, t+1)
                     s_t = SimulatorModel.transition_2(s_t, action, t+1)
 
     def guide(self, mini_batch, mini_batch_reversed):
         T_max = mini_batch.size(1)
         pyro.module("simulator_model", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
-            initial_state_generator = InitialStateGenerator()
+            initial_state_generator = S_0()
             s_t = initial_state_generator.generate_state()
             h_0_contig = self.h_0.expand(1, mini_batch.size(0), self.rnn.hidden_size).contiguous()
             rnn_output, _ = self.rnn(mini_batch_reversed, h_0_contig)
             rnn_output = torch.flip(rnn_output, [1])
             for t in range(1,T_max):
-                gender = pyro.sample(f"s_{t}_gender", dist.Delta(s_t.gender))
-                socio_econ = pyro.sample(f"s_{t}_socio_econ", dist.Delta(s_t.socio_econ))
-                # pain_stimulus_probs = self.pain_stimulus_classifier(s_t.as_tensor(), rnn_output[:, t-1, :])
-                # pain_stimulus_eps = pyro.sample(f"s_{t}_pain_stimulus_eps", dist.Multinomial(total_count=1, probs=pain_stimulus_probs), infer={'is_auxiliary': True})
-                pain_stimulus = pyro.sample(f"s_{t}_pain_stimulus", dist.Categorical(self.pain_stimulus_classifier(s_t.as_tensor(), rnn_output[:, t-1, :])[0]))
+                # TODO: implement pain stimulus
+                # pain_stimulus = pyro.sample(f"s_{t}_pain_stimulus", dist.Categorical(self.pain_stimulus_classifier(s_t.as_tensor(), rnn_output[:, t-1, :])[0]))
                 s_loc, s_scale = self.combiner(s_t.as_tensor(), rnn_output[:, t-1, :])
                 hr = pyro.sample(f"s_{t}_hr", dist.Normal((s_loc[:, :, 0]).reshape(-1), (s_scale[:, :, 0]).reshape(-1)))
                 rr = pyro.sample(f"s_{t}_rr", dist.Normal((s_loc[:, :, 1]).reshape(-1), (s_scale[:, :, 1]).reshape(-1)))
@@ -178,82 +100,7 @@ class SimulatorModel(nn.Module):
                 weight = pyro.sample(f"s_{t}_weight", dist.Normal((s_loc[:, :, 5]).reshape(-1), (s_scale[:, :, 5]).reshape(-1)))
                 height = pyro.sample(f"s_{t}_height", dist.Normal((s_loc[:, :, 6]).reshape(-1), (s_scale[:, :, 6]).reshape(-1)))
                 wbc_count = pyro.sample(f"s_{t}_wbc_count", dist.Normal((s_loc[:, :, 7]).reshape(-1), (s_scale[:, :, 7]).reshape(-1)))
-                s_t = PatientState(gender, hr, rr, sysbp, diabp, fio2, weight, height, wbc_count, socio_econ, pain_stimulus)
-
-
-############################################################################
-e = ObservationalDataset("/Users/faaiz/exportdir/observational-data-5000-0.csv")
-from torch.utils.data.sampler import SubsetRandomSampler
-pyro.clear_param_store()
-validation_split = 0.25
-shuffle_dataset = True
-dataset_size = len(e)
-indices = list(range(dataset_size))
-split = int(np.floor(validation_split * dataset_size))
-if shuffle_dataset:
-    np.random.shuffle(indices)
-train_indices, val_indices = indices[split:], indices[:split]
-policy = PolicyNetwork(11, 4)
-# Creating PT data samplers and loaders:
-train_sampler = SubsetRandomSampler(train_indices)
-valid_sampler = SubsetRandomSampler(val_indices)
-
-train_loader = torch.utils.data.DataLoader(e, batch_size=16,
-                                           sampler=train_sampler)
-validation_loader = torch.utils.data.DataLoader(e, batch_size=16,
-                                                sampler=valid_sampler)
-adam_params = {"lr": 0.001}
-optimizer = ClippedAdam(adam_params)
-dmm = SimulatorModel()
-svi = SVI(dmm.model, dmm.guide, optimizer, Trace_ELBO())
-def train(svi, train_loader, use_cuda=False):
-    # initialize loss accumulator
-    epoch_loss = 0.
-    # do a training epoch over each mini-batch x returned
-    # by the data loader
-    for x in train_loader:
-        # if on GPU put mini-batch into CUDA memory
-        if use_cuda:
-            x = x.cuda()
-        # do ELBO gradient and accumulate loss
-        x_reversed = torch.flip(x, [1])
-        epoch_loss += svi.step(x.float(), x_reversed.float())
-        print("Loss is: " + str(epoch_loss))
-
-    # return epoch loss
-    normalizer_train = len(train_loader.dataset)
-    total_epoch_loss_train = epoch_loss / normalizer_train
-    return total_epoch_loss_train
-
-def evaluate(svi, test_loader, use_cuda=False):
-    # initialize loss accumulator
-    test_loss = 0.
-    # compute the loss over the entire test set
-    for x in test_loader:
-        # if on GPU put mini-batch into CUDA memory
-        if use_cuda:
-            x = x.cuda()
-        # compute ELBO estimate and accumulate loss
-        x_reversed = torch.flip(x, [1])
-        test_loss += svi.evaluate_loss(x.float(), x_reversed.float())
-    normalizer_test = len(test_loader.dataset)
-    total_epoch_loss_test = test_loss / normalizer_test
-    return total_epoch_loss_test
-
-
-NUM_EPOCHS = 8
-train_elbo = []
-test_elbo = []
-TEST_FREQUENCY = 2
-# training loop
-for epoch in range(NUM_EPOCHS):
-    total_epoch_loss_train = train(svi, train_loader, use_cuda=False)
-    train_elbo.append(-total_epoch_loss_train)
-    print("[epoch %03d]  average training loss: %.4f" % (epoch, total_epoch_loss_train))
-
-    if epoch % TEST_FREQUENCY == 0:
-        # report test diagnostics
-        total_epoch_loss_test = evaluate(svi, validation_loader, use_cuda=False)
-        test_elbo.append(-total_epoch_loss_test)
-        print("[epoch %03d] average test loss: %.4f" % (epoch, total_epoch_loss_test))
-
+                s_t = PatientState(gender=s_t.gender, hr=hr, rr=rr,
+                                   sysbp=sysbp, diabp=diabp, weight=weight,
+                                   height=height, wbc_count=wbc_count, socio_econ=s_t.socio_econ,
+                                   pain_stimulus=s_t.pain_stimulus, fio2=fio2)
