@@ -1,9 +1,8 @@
 import pyro
 import torch
 
-from max_likelihood.ObservationalDataset import cols
+from max_likelihood.utils.ObservationalDataset import cols
 from observational_model.PatientState import PatientState
-import numpy as np
 import pyro.distributions as dist
 
 min_sysbp_men = 90

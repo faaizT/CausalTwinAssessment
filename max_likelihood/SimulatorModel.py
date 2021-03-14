@@ -3,9 +3,10 @@ import pyro.distributions as dist
 import torch
 from torch import nn
 
-from max_likelihood.HelperNetworks import PolicyNetwork, Combiner, PainStimulusClassifier
-from max_likelihood.ObservationalDataset import cols
-from max_likelihood.S_0 import S_0
+from max_likelihood.utils.HelperNetworks import PolicyNetwork, Combiner, PainStimulusClassifier
+from max_likelihood.utils.ObservationalDataset import cols
+from max_likelihood.utils.S_0 import S_0
+from max_likelihood.utils.TransitionModel import transition_to_next_state, get_xt_from_state
 from observational_model.PatientState import PatientState
 # TODO: move to appropriate location
 # TODO: deal with tensors in St, Xt and Ut
@@ -32,7 +33,8 @@ max_height_women = 180
 
 class SimulatorModel(nn.Module):
 
-    def __init__(self, input_dim=len(cols), rnn_dim=20, st_dim=11, actions=4, rnn_dropout_rate=0.0, use_cuda=False):
+    def __init__(self, input_dim=len(cols), rnn_dim=30, st_dim=11, actions=4, rnn_dropout_rate=0.0,
+                 transition_model=transition_to_next_state, use_cuda=False):
         super().__init__()
         self.policy = PolicyNetwork(input_dim=st_dim, output_dim=actions)
         self.rnn = nn.RNN(input_size=input_dim, hidden_size=rnn_dim,
@@ -42,35 +44,9 @@ class SimulatorModel(nn.Module):
         self.combiner = Combiner(z_dim=st_dim, rnn_dim=rnn_dim, out_dim=st_dim-3)
         self.h_0 = nn.Parameter(torch.zeros(1, 1, rnn_dim))
         self.use_cuda = use_cuda
+        self.transition_model = transition_model
         if use_cuda:
             self.cuda()
-
-    @staticmethod
-    def transition_to_next_state(state: PatientState, action, t):
-        current_hr = pyro.sample(f"s_{t}_hr", dist.Normal(action*8, action**2*4+0.1))
-        current_rr = pyro.sample(f"s_{t}_rr", dist.Normal(action*2, action**2*1+0.1))
-        current_sysbp = pyro.sample(f"s_{t}_sysbp", dist.Normal(action*5*(1-state.gender) + state.gender*action*3, action*5 + 0.1))
-        current_diabp = pyro.sample(f"s_{t}_diabp", dist.Normal(action*5*(1-state.gender) + state.gender*action*3, action*5 + 0.1))
-        current_height = pyro.sample(f"s_{t}_height", dist.Normal(state.height, 0.001))
-        current_weight = pyro.sample(f"s_{t}_weight", dist.Normal(state.weight, 0.001))
-        current_wbc_count = pyro.sample(f"s_{t}_wbc_count", dist.Normal(state.wbc_count - action/3*1000, ((action+1)/4)**2*1000))
-        current_fio2 = pyro.sample(f"s_{t}_fio2", dist.Normal(state.fio2, torch.tensor(0.001)))
-        probs = torch.zeros((state.pain_stimulus.size(0), 10))
-        probs[torch.arange(state.pain_stimulus.size(0)), state.pain_stimulus] = 1
-        pain_stimulus_non_zero = torch.where(state.pain_stimulus > 0, 1, 0)
-        probs[torch.arange(state.pain_stimulus.size(0)), state.pain_stimulus - pain_stimulus_non_zero] = 1
-        current_pain_stimulus = pyro.sample(f"s_{t}_pain_stimulus", dist.Categorical(probs=probs))
-        return PatientState(gender=state.gender, hr=current_hr, rr=current_rr,
-                            sysbp=current_sysbp, diabp=current_diabp, height=current_height,
-                            weight=current_weight, wbc_count=current_wbc_count, socio_econ=state.socio_econ,
-                            pain_stimulus=current_pain_stimulus, fio2=current_fio2)
-
-    @staticmethod
-    def get_xt_from_state(st, t, obs_data):
-        hr = pyro.sample(f"x_{t}_hr", dist.Normal(st.hr, 5), obs=obs_data[:, t, cols.index('xt_hr')])
-        sysbp = pyro.sample(f"x_{t}_sysbp", dist.Normal(st.sysbp, 4), obs=obs_data[:, t, cols.index('xt_sysbp')])
-        diabp = pyro.sample(f"x_{t}_diabp", dist.Normal(st.diabp, 4), obs=obs_data[:, t, cols.index('xt_diabp')])
-        return Xt(gender=st.gender, hr=hr, sysbp=sysbp, diabp=diabp)
 
     def model(self, mini_batch, mini_batch_reversed):
         T_max = mini_batch.size(1)
@@ -79,10 +55,10 @@ class SimulatorModel(nn.Module):
             initial_state_generator = S_0(mini_batch)
             s_t = initial_state_generator.generate_state()
             for t in range(T_max):
-                SimulatorModel.get_xt_from_state(s_t, t, obs_data=mini_batch)
+                get_xt_from_state(s_t, t, obs_data=mini_batch)
                 action = pyro.sample(f"A_{t}", dist.Categorical(self.policy(s_t.as_tensor())[0]), obs=mini_batch[:, t, cols.index('A_t')])
                 if t < T_max - 1:
-                    s_t = SimulatorModel.transition_to_next_state(s_t, action, t + 1)
+                    s_t = self.transition_model(s_t, action, t + 1)
 
     def guide(self, mini_batch, mini_batch_reversed):
         T_max = mini_batch.size(1)
