@@ -3,11 +3,12 @@ import pandas as pd
 
 import logging
 from observational_model.Model import InitialStateGenerator, physician_policy, Model
+from simulator.Simulator import RealSimulator
 
 
 def generate_trajectory(df: pd.DataFrame, trajectory_length: int, id: int):
     st = InitialStateGenerator().generate_state()
-    model = Model(st)
+    model = RealSimulator(st)
     logging.info(f'Trajectory for Patient Id: {id}')
     for i in range(trajectory_length):
         xt, ut = model.get_state().get_xt(), model.get_state().get_ut()
