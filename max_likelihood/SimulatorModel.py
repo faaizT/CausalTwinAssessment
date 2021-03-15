@@ -11,7 +11,6 @@ from observational_model.PatientState import PatientState
 # TODO: move to appropriate location
 # TODO: deal with tensors in St, Xt and Ut
 # TODO: Comments
-from observational_model.PatientState import Xt
 
 min_sysbp_men = 90
 max_sysbp_men = 160
@@ -70,7 +69,6 @@ class SimulatorModel(nn.Module):
             rnn_output, _ = self.rnn(mini_batch_reversed, h_0_contig)
             rnn_output = torch.flip(rnn_output, [1])
             for t in range(1,T_max):
-                pain_stimulus = pyro.sample(f"s_{t}_pain_stimulus", dist.Categorical(self.pain_stimulus_classifier(s_t.as_tensor(), rnn_output[:, t-1, :])[0]))
                 s_loc, s_scale = self.combiner(s_t.as_tensor(), rnn_output[:, t-1, :])
                 hr = pyro.sample(f"s_{t}_hr", dist.Normal((s_loc[:, :, 0]).reshape(-1), (s_scale[:, :, 0]).reshape(-1)))
                 rr = pyro.sample(f"s_{t}_rr", dist.Normal((s_loc[:, :, 1]).reshape(-1), (s_scale[:, :, 1]).reshape(-1)))
@@ -80,6 +78,7 @@ class SimulatorModel(nn.Module):
                 weight = pyro.sample(f"s_{t}_weight", dist.Normal((s_loc[:, :, 5]).reshape(-1), (s_scale[:, :, 5]).reshape(-1)))
                 height = pyro.sample(f"s_{t}_height", dist.Normal((s_loc[:, :, 6]).reshape(-1), (s_scale[:, :, 6]).reshape(-1)))
                 wbc_count = pyro.sample(f"s_{t}_wbc_count", dist.Normal((s_loc[:, :, 7]).reshape(-1), (s_scale[:, :, 7]).reshape(-1)))
+                pain_stimulus = pyro.sample(f"s_{t}_pain_stimulus", dist.Categorical(self.pain_stimulus_classifier(s_t.as_tensor(), rnn_output[:, t-1, :])[0]))
                 s_t = PatientState(gender=s_t.gender, hr=hr, rr=rr,
                                    sysbp=sysbp, diabp=diabp, weight=weight,
                                    height=height, wbc_count=wbc_count, socio_econ=s_t.socio_econ,

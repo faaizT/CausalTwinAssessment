@@ -15,11 +15,12 @@ from max_likelihood.SimulatorModel import SimulatorModel
 from torch.utils.data.sampler import SubsetRandomSampler
 
 
-def train(svi, train_loader, use_cuda=False):
+def train(svi, train_loader, epoch, loss_dict, use_cuda=False):
     # initialize loss accumulator
     epoch_loss = 0.
     # do a training epoch over each mini-batch x returned
     # by the data loader
+    i = 0
     for x in train_loader:
         # if on GPU put mini-batch into CUDA memory
         if use_cuda:
@@ -27,7 +28,13 @@ def train(svi, train_loader, use_cuda=False):
         # do ELBO gradient and accumulate loss
         x_reversed = torch.flip(x, [1])
         epoch_loss += svi.step(x.float(), x_reversed.float())
-
+        if i % 50 == 0:
+            logging.info("[epoch %03d] [minibatch %06d]  epoch_loss: %.4f" % (epoch, i, epoch_loss))
+            loss_dict['Epochs'].append(epoch)
+            loss_dict['Mini-batch'].append(i)
+            loss_dict['Training Loss'].append(epoch_loss)
+            pd.DataFrame(data=loss_dict).to_csv(args.exportdir + f"/train-loss-minibatches-{time}.csv")
+        i += 1
     # return epoch loss
     normalizer_train = len(train_loader.dataset)
     total_epoch_loss_train = epoch_loss / normalizer_train
@@ -89,12 +96,13 @@ if __name__ == "__main__":
 
     NUM_EPOCHS = args.epochs
     train_elbo = {'Epochs': [], 'Training Loss': []}
+    train_minibatch_elbo = {'Epochs': [], 'Mini-batch': [], 'Training Loss': []}
     test_elbo = {'Epochs': [], 'Test Loss': []}
     TEST_FREQUENCY = 10
     SAVE_FREQUENCY = 10
     # training loop
     for epoch in range(NUM_EPOCHS):
-        total_epoch_loss_train = train(svi, train_loader, use_cuda=False)
+        total_epoch_loss_train = train(svi, train_loader, epoch, train_minibatch_elbo, use_cuda=False)
         train_elbo['Epochs'].append(epoch)
         train_elbo['Training Loss'].append(-total_epoch_loss_train)
         logging.info("[epoch %03d]  average training loss: %.4f" % (epoch, total_epoch_loss_train))
