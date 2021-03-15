@@ -25,5 +25,7 @@ class RealSimulator(Model):
 def get_simulator(simulator_name):
     if simulator_name == "real":
         return RealSimulator()
+    elif simulator_name == "original":
+        return Model()
     else:
         raise Exception("Simulator name incorrect. Must be one of [real]")
