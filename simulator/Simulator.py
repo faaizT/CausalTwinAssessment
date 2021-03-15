@@ -28,4 +28,4 @@ def get_simulator(simulator_name):
     elif simulator_name == "original":
         return Model()
     else:
-        raise Exception("Simulator name incorrect. Must be one of [real]")
+        raise Exception("Simulator name incorrect. Must be one of [real, original]")
