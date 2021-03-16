@@ -3,7 +3,7 @@ import pyro.distributions as dist
 import torch
 from torch import nn
 
-from max_likelihood.utils.HelperNetworks import PolicyNetwork, Combiner, PainStimulusClassifier
+from max_likelihood.utils.HelperNetworks import PolicyNetwork, Combiner, PainStimulusClassifier, CombinerWithNoise
 from max_likelihood.utils.ObservationalDataset import cols
 from max_likelihood.utils.S_0 import S_0
 from max_likelihood.utils.TransitionModel import transition_to_next_state, get_xt_from_state
@@ -32,7 +32,7 @@ max_height_women = 180
 
 class SimulatorModel(nn.Module):
 
-    def __init__(self, input_dim=len(cols), rnn_dim=30, st_dim=11, actions=4, rnn_dropout_rate=0.0,
+    def __init__(self, input_dim=len(cols), rnn_dim=30, st_dim=11, actions=4, rnn_dropout_rate=0.0, noise_dim=10,
                  transition_model=transition_to_next_state, use_cuda=False):
         super().__init__()
         self.policy = PolicyNetwork(input_dim=st_dim, output_dim=actions)
@@ -40,7 +40,8 @@ class SimulatorModel(nn.Module):
                           nonlinearity='relu', batch_first=True,
                           bidirectional=False, num_layers=1, dropout=rnn_dropout_rate)
         self.pain_stimulus_classifier = PainStimulusClassifier(st_dim, rnn_dim, pain_stimulus_dim=10)
-        self.combiner = Combiner(z_dim=st_dim, rnn_dim=rnn_dim, out_dim=st_dim-3)
+        self.combiner = CombinerWithNoise(z_dim=st_dim, rnn_dim=rnn_dim, out_dim=st_dim - 3, noise_dim=noise_dim)
+        self.noise_dim = noise_dim
         self.h_0 = nn.Parameter(torch.zeros(1, 1, rnn_dim))
         self.use_cuda = use_cuda
         self.transition_model = transition_model
@@ -68,16 +69,17 @@ class SimulatorModel(nn.Module):
             h_0_contig = self.h_0.expand(1, mini_batch.size(0), self.rnn.hidden_size).contiguous()
             rnn_output, _ = self.rnn(mini_batch_reversed, h_0_contig)
             rnn_output = torch.flip(rnn_output, [1])
-            for t in range(1,T_max):
-                s_loc, s_scale = self.combiner(s_t.as_tensor(), rnn_output[:, t-1, :])
-                hr = pyro.sample(f"s_{t}_hr", dist.Normal((s_loc[:, :, 0]).reshape(-1), (s_scale[:, :, 0]).reshape(-1)))
-                rr = pyro.sample(f"s_{t}_rr", dist.Normal((s_loc[:, :, 1]).reshape(-1), (s_scale[:, :, 1]).reshape(-1)))
-                sysbp = pyro.sample(f"s_{t}_sysbp", dist.Normal((s_loc[:, :, 2]).reshape(-1), (s_scale[:, :, 2]).reshape(-1)))
-                diabp = pyro.sample(f"s_{t}_diabp", dist.Normal((s_loc[:, :, 3]).reshape(-1), (s_scale[:, :, 3]).reshape(-1)))
-                fio2 = pyro.sample(f"s_{t}_fio2", dist.Normal((s_loc[:, :, 4]).reshape(-1), (s_scale[:, :, 4]).reshape(-1)))
-                weight = pyro.sample(f"s_{t}_weight", dist.Normal((s_loc[:, :, 5]).reshape(-1), (s_scale[:, :, 5]).reshape(-1)))
-                height = pyro.sample(f"s_{t}_height", dist.Normal((s_loc[:, :, 6]).reshape(-1), (s_scale[:, :, 6]).reshape(-1)))
-                wbc_count = pyro.sample(f"s_{t}_wbc_count", dist.Normal((s_loc[:, :, 7]).reshape(-1), (s_scale[:, :, 7]).reshape(-1)))
+            for t in range(1, T_max):
+                epsilon = dist.Normal(0, 1).sample((1, len(mini_batch), self.noise_dim))
+                s_loc = self.combiner(s_t.as_tensor(), rnn_output[:, t-1, :], epsilon)
+                hr = pyro.sample(f"s_{t}_hr", dist.Normal((s_loc[:, :, 0]).reshape(-1), 0.001))
+                rr = pyro.sample(f"s_{t}_rr", dist.Normal((s_loc[:, :, 1]).reshape(-1), 0.001))
+                sysbp = pyro.sample(f"s_{t}_sysbp", dist.Normal((s_loc[:, :, 2]).reshape(-1), 0.001))
+                diabp = pyro.sample(f"s_{t}_diabp", dist.Normal((s_loc[:, :, 3]).reshape(-1), 0.001))
+                fio2 = pyro.sample(f"s_{t}_fio2", dist.Normal((s_loc[:, :, 4]).reshape(-1), 0.001))
+                weight = pyro.sample(f"s_{t}_weight", dist.Normal((s_loc[:, :, 5]).reshape(-1), 0.001))
+                height = pyro.sample(f"s_{t}_height", dist.Normal((s_loc[:, :, 6]).reshape(-1), 0.001))
+                wbc_count = pyro.sample(f"s_{t}_wbc_count", dist.Normal((s_loc[:, :, 7]).reshape(-1), 0.001))
                 pain_stimulus = pyro.sample(f"s_{t}_pain_stimulus", dist.Categorical(self.pain_stimulus_classifier(s_t.as_tensor(), rnn_output[:, t-1, :])[0]))
                 s_t = PatientState(gender=s_t.gender, hr=hr, rr=rr,
                                    sysbp=sysbp, diabp=diabp, weight=weight,

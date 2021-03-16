@@ -62,6 +62,7 @@ if __name__ == "__main__":
     parser.add_argument("path", help="path to observational data")
     parser.add_argument("epochs", help="number of epochs to train for", type=int)
     parser.add_argument("exportdir", help="path to output directory")
+    parser.add_argument("--lr", help="learning rate", type=float, default=0.01)
     args = parser.parse_args()
 
     time = datetime.datetime.now().time()
@@ -89,7 +90,7 @@ if __name__ == "__main__":
                                                sampler=train_sampler)
     validation_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16,
                                                     sampler=valid_sampler)
-    adam_params = {"lr": 0.001}
+    adam_params = {"lr": args.lr}
     optimizer = ClippedAdam(adam_params)
     simulator_model = SimulatorModel()
     svi = SVI(simulator_model.model, simulator_model.guide, optimizer, Trace_ELBO())

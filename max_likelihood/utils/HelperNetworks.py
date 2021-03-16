@@ -1,3 +1,4 @@
+import torch
 import torch as T
 
 
@@ -54,6 +55,26 @@ class Combiner(T.nn.Module):
         scale = self.softplus(self.lin_hidden_to_scale(h_combined))
         # return loc, scale which can be fed into Normal
         return loc, scale
+
+
+class CombinerWithNoise(T.nn.Module):
+
+    def __init__(self, noise_dim, z_dim, rnn_dim, out_dim):
+        super().__init__()
+        # initialize the three linear transformations used in the neural network
+        self.lin_z_to_hidden = T.nn.Linear(z_dim + noise_dim, rnn_dim)
+        self.lin_hidden_to_loc = T.nn.Linear(rnn_dim, out_dim)
+
+        # initialize the two non-linearities used in the neural network
+        self.tanh = T.nn.Tanh()
+
+    def forward(self, z_t_1, h_rnn, noise):
+        # combine the rnn hidden state with a transformed version of z_t_1 and noise
+        h_combined = 0.5 * (self.tanh(self.lin_z_to_hidden(torch.cat((z_t_1, noise), dim=2))) + h_rnn)
+        # use the combined hidden state to compute the mean used to sample z_t
+        loc = self.lin_hidden_to_loc(h_combined)
+        # use the combined hidden state to compute the scale used to sample z_t
+        return loc
 
 
 class PainStimulusClassifier(T.nn.Module):
