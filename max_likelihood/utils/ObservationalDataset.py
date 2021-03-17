@@ -6,13 +6,15 @@ cols = ['A_t', 't', 'xt_gender', 'xt_hr', 'xt_sysbp', 'xt_diabp']
 
 
 class ObservationalDataset(Dataset):
-    def __init__(self, csv_file):
+    def __init__(self, csv_file, columns=None):
         """
         Args:
             csv_file (string): Path to the csv file with annotations.
         """
+        if columns is None:
+            columns = cols
         data = pd.read_csv(csv_file)
-        data_filtered = data[cols]
+        data_filtered = data[columns]
         self.ehr_data = []
         trajectory = []
         for i in range(len(data)):

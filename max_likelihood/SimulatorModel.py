@@ -11,6 +11,7 @@ from observational_model.PatientState import PatientState
 # TODO: move to appropriate location
 # TODO: deal with tensors in St, Xt and Ut
 # TODO: Comments
+# TODO: IMPORTANT - correct the actions being passed into rnn
 
 min_sysbp_men = 90
 max_sysbp_men = 160
