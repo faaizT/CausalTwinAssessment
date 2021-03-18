@@ -86,20 +86,20 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file):
     NUM_EPOCHS = epochs
     train_elbo = {'Epochs': [], 'Training Loss': []}
     test_elbo = {'Epochs': [], 'Test Loss': []}
-    TEST_FREQUENCY = 10
+    TEST_FREQUENCY = 2
     SAVE_FREQUENCY = 2
     # training loop
     consecutive_loss_increments = 0
     for epoch in range(NUM_EPOCHS):
         epoch_loss_train = train(svi, train_loader, use_cuda=False)
         train_elbo['Epochs'].append(epoch)
-        train_elbo['Training Loss'].append(-epoch_loss_train)
+        train_elbo['Training Loss'].append(epoch_loss_train)
         logging.info("[epoch %03d]  average training loss: %.4f" % (epoch, epoch_loss_train))
         if (epoch+1) % TEST_FREQUENCY == 0:
             # report test diagnostics
             epoch_loss_test = evaluate(svi, validation_loader, use_cuda=False)
             test_elbo['Epochs'].append(epoch)
-            test_elbo['Test Loss'].append(-epoch_loss_test)
+            test_elbo['Test Loss'].append(epoch_loss_test)
             logging.info("[epoch %03d] average test loss: %.4f" % (epoch, epoch_loss_test))
             if len(test_elbo['Test Loss']) > 1 and test_elbo['Test Loss'][-1] > test_elbo['Test Loss'][-2]:
                 consecutive_loss_increments += 1
