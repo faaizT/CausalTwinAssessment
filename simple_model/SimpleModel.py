@@ -27,8 +27,8 @@ class SimpleModel(nn.Module):
             s_0_2 = pyro.sample("s_0_2", dist.Normal(110, 40))
             x_0_1 = pyro.sample("x_0", dist.Normal(s_0_1, 1), obs=mini_batch[:, 0, cols.index('X_t')])
             action = pyro.sample("a_0", dist.Categorical(logits=self.policy(torch.column_stack((s_0_1, s_0_2)))), obs=mini_batch[:, 0, cols.index('A_t')])
-            s_1_1 = pyro.sample("s_1_1", dist.Normal(s_0_1 + action*self.increment_factor[0], 10))
-            s_1_2 = pyro.sample("s_1_2", dist.Normal(s_0_2 + action*self.increment_factor[1], 15))
+            s_1_1 = pyro.sample("s_1_1", dist.Normal(s_0_1 + action*self.increment_factor[0], 1))
+            s_1_2 = pyro.sample("s_1_2", dist.Normal(s_0_2 + action*self.increment_factor[1], 1))
             x_1_1 = pyro.sample("x_1", dist.Normal(s_1_1, 1), obs=mini_batch[:, 1, cols.index('X_t')])
 
     def guide(self, mini_batch):

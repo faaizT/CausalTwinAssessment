@@ -15,8 +15,8 @@ class S_t():
             self.s_t_2 = s_t_2
 
     def next_state(self, action):
-        self.s_t_1 += np.random.normal(action*10, 10)
-        self.s_t_2 += np.random.normal(action*10, 15)
+        self.s_t_1 += np.random.normal(action*10, 1)
+        self.s_t_2 += np.random.normal(action*10, 1)
 
     def get_xt(self):
         return np.random.normal(self.s_t_1, 1)
