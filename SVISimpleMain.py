@@ -84,44 +84,48 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file):
     svi = SVI(simulator_model.model, simulator_model.guide, optimizer, Trace_ELBO())
 
     NUM_EPOCHS = epochs
-    train_elbo = {'Epochs': [], 'Training Loss': []}
-    test_elbo = {'Epochs': [], 'Test Loss': []}
-    TEST_FREQUENCY = 2
-    SAVE_FREQUENCY = 2
+    train_loss = {'Epochs': [], 'Training Loss': []}
+    test_loss = {'Epochs': [], 'Test Loss': []}
+    TEST_FREQUENCY = 1
+    SAVE_FREQUENCY = 1
     # training loop
     consecutive_loss_increments = 0
     for epoch in range(NUM_EPOCHS):
         epoch_loss_train = train(svi, train_loader, use_cuda=False)
-        train_elbo['Epochs'].append(epoch)
-        train_elbo['Training Loss'].append(epoch_loss_train)
+        train_loss['Epochs'].append(epoch)
+        train_loss['Training Loss'].append(epoch_loss_train)
         logging.info("[epoch %03d]  average training loss: %.4f" % (epoch, epoch_loss_train))
         if (epoch+1) % TEST_FREQUENCY == 0:
             # report test diagnostics
             epoch_loss_test = evaluate(svi, validation_loader, use_cuda=False)
-            test_elbo['Epochs'].append(epoch)
-            test_elbo['Test Loss'].append(epoch_loss_test)
+            test_loss['Epochs'].append(epoch)
+            test_loss['Test Loss'].append(epoch_loss_test)
             logging.info("[epoch %03d] average test loss: %.4f" % (epoch, epoch_loss_test))
-            if len(test_elbo['Test Loss']) > 1 and test_elbo['Test Loss'][-1] > test_elbo['Test Loss'][-2]:
+            if len(test_loss['Test Loss']) > 1 and test_loss['Test Loss'][-1] > test_loss['Test Loss'][-2]:
                 consecutive_loss_increments += 1
             else:
                 consecutive_loss_increments = 0
         if (epoch+1) % SAVE_FREQUENCY == 0:
             logging.info("saving model and optimiser states to %s..." % exportdir)
-            pd.DataFrame(data=train_elbo).to_csv(exportdir+f"/train-loss-{simulator_model.increment_factor}.csv")
-            pd.DataFrame(data=test_elbo).to_csv(exportdir+f"/test-loss-{simulator_model.increment_factor}.csv")
+            pd.DataFrame(data=train_loss).to_csv(exportdir+f"/train-loss-{simulator_model.increment_factor}.csv")
+            pd.DataFrame(data=test_loss).to_csv(exportdir+f"/test-loss-{simulator_model.increment_factor}.csv")
             torch.save(simulator_model.state_dict(), exportdir+f"/model-state-{simulator_model.increment_factor}")
             optimizer.save(exportdir+f"/optimiser-state-{simulator_model.increment_factor}")
             logging.info("done saving model and optimizer checkpoints to disk.")
-        if consecutive_loss_increments >= 3:
+        if consecutive_loss_increments >= 6:
             break
     logging.info("saving model and optimiser states to %s..." % exportdir)
-    pd.DataFrame(data=train_elbo).to_csv(exportdir + f"/train-loss-{simulator_model.increment_factor}.csv")
-    pd.DataFrame(data=test_elbo).to_csv(exportdir + f"/test-loss-{simulator_model.increment_factor}.csv")
+    pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss-{simulator_model.increment_factor}.csv")
+    pd.DataFrame(data=test_loss).to_csv(exportdir + f"/test-loss-{simulator_model.increment_factor}.csv")
     torch.save(simulator_model.state_dict(), exportdir + f"/model-state-{simulator_model.increment_factor}")
     optimizer.save(exportdir + f"/optimiser-state-{simulator_model.increment_factor}")
     logging.info("done saving model and optimizer checkpoints to disk.")
-    write_to_file(output_file, simulator_model.increment_factor[0], simulator_model.increment_factor[1],
-                  test_elbo['Test Loss'][-1])
+    if consecutive_loss_increments >= 6:
+        write_to_file(output_file, simulator_model.increment_factor[0], simulator_model.increment_factor[1],
+                      test_loss['Test Loss'][-6])
+    else:
+        write_to_file(output_file, simulator_model.increment_factor[0], simulator_model.increment_factor[1],
+                      test_loss['Test Loss'][-1])
 
 
 if __name__ == "__main__":
