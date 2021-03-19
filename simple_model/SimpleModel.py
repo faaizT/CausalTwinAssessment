@@ -12,7 +12,8 @@ class SimpleModel(nn.Module):
     def __init__(self, use_cuda=False, increment_factor=None):
         super().__init__()
         self.policy = Policy(2, 2)
-        self.s_network = SNetwork(4, 2)
+        self.st_1_network = SNetwork(4, 1)
+        self.st_2_network = SNetwork(4, 1)
         if increment_factor is None:
             increment_factor = (10, 10)
         self.increment_factor = increment_factor
@@ -36,7 +37,8 @@ class SimpleModel(nn.Module):
         with pyro.plate("s_minibatch", len(mini_batch)):
             s_0_1 = pyro.sample("s_0_1", dist.Normal(70, 20))
             s_0_2 = pyro.sample("s_0_2", dist.Normal(110, 40))
-            s_1_loc, s_1_scale = self.s_network(torch.column_stack((s_0_1, s_0_2, mini_batch[:, 0, cols.index('A_t')], mini_batch[:, 1, cols.index('X_t')])))
-            s_1_1 = pyro.sample("s_1_1", dist.Normal(s_1_loc[:, 0], torch.exp(s_1_scale[:, 0])))
-            s_1_2 = pyro.sample("s_1_2", dist.Normal(s_1_loc[:, 1], torch.exp(s_1_scale[:, 1])))
+            st_1_loc, st_1_scale = self.st_1_network(torch.column_stack((s_0_1, s_0_2, mini_batch[:, 0, cols.index('A_t')], mini_batch[:, 1, cols.index('X_t')])))
+            st_2_loc, st_2_scale = self.st_2_network(torch.column_stack((s_0_1, s_0_2, mini_batch[:, 0, cols.index('A_t')], mini_batch[:, 1, cols.index('X_t')])))
+            s_1_1 = pyro.sample("s_1_1", dist.Normal(st_1_loc[:, 0], torch.exp(st_1_scale[:, 0])))
+            s_1_2 = pyro.sample("s_1_2", dist.Normal(st_2_loc[:, 0], torch.exp(st_2_scale[:, 0])))
 
