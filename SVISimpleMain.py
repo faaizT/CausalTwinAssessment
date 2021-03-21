@@ -1,7 +1,6 @@
 import argparse
 import logging
 import os
-import threading
 
 import pandas as pd
 import numpy as np
@@ -86,8 +85,8 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file):
     NUM_EPOCHS = epochs
     train_loss = {'Epochs': [], 'Training Loss': []}
     test_loss = {'Epochs': [], 'Test Loss': []}
-    TEST_FREQUENCY = 1
-    SAVE_FREQUENCY = 1
+    TEST_FREQUENCY = 5
+    SAVE_FREQUENCY = 5
     # training loop
     consecutive_loss_increments = 0
     for epoch in range(NUM_EPOCHS):
@@ -112,7 +111,7 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file):
             torch.save(simulator_model.state_dict(), exportdir+f"/model-state-{simulator_model.increment_factor}")
             optimizer.save(exportdir+f"/optimiser-state-{simulator_model.increment_factor}")
             logging.info("done saving model and optimizer checkpoints to disk.")
-        if consecutive_loss_increments >= 6:
+        if consecutive_loss_increments >= 4:
             break
     logging.info("saving model and optimiser states to %s..." % exportdir)
     pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss-{simulator_model.increment_factor}.csv")
@@ -120,9 +119,9 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file):
     torch.save(simulator_model.state_dict(), exportdir + f"/model-state-{simulator_model.increment_factor}")
     optimizer.save(exportdir + f"/optimiser-state-{simulator_model.increment_factor}")
     logging.info("done saving model and optimizer checkpoints to disk.")
-    if consecutive_loss_increments >= 6:
+    if consecutive_loss_increments >= 4:
         write_to_file(output_file, simulator_model.increment_factor[0], simulator_model.increment_factor[1],
-                      test_loss['Test Loss'][-6])
+                      test_loss['Test Loss'][-4])
     else:
         write_to_file(output_file, simulator_model.increment_factor[0], simulator_model.increment_factor[1],
                       test_loss['Test Loss'][-1])

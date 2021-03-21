@@ -27,8 +27,8 @@ class S_t():
 
 def physicians_policy(xt, ut):
     if xt <= 80 and ut <= 120:
-        return 0
-    return 1
+        return 1
+    return 0
 
 
 def generate_trajectories(df: pd.DataFrame, trajectory_length: int, id: int):

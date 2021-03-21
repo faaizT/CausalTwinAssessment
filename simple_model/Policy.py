@@ -7,7 +7,7 @@ class Policy(T.nn.Module):
         self.hid1 = T.nn.Linear(input_dim, hidden_1_dim)
         self.hid2 = T.nn.Linear(hidden_1_dim, hidden_2_dim)
         self.outp = T.nn.Linear(hidden_2_dim, output_dim)
-        self.tanh = T.nn.Tanh()
+        self.leakyRelu = T.nn.LeakyReLU()
 
         T.nn.init.xavier_uniform_(self.hid1.weight)
         T.nn.init.zeros_(self.hid1.bias)
@@ -17,8 +17,8 @@ class Policy(T.nn.Module):
         T.nn.init.zeros_(self.outp.bias)
 
     def forward(self, x):
-        z = self.tanh(self.hid1(x))
-        z = self.tanh(self.hid2(z))
+        z = self.leakyRelu(self.hid1(x))
+        z = self.leakyRelu(self.hid2(z))
         z = self.outp(z)
         return z
 
