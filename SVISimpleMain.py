@@ -63,31 +63,33 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file):
                         handlers=[logging.FileHandler(log_file_name), logging.StreamHandler()])
     observational_dataset = ObservationalDataset(path, columns=cols)
     pyro.clear_param_store()
-    validation_split = 0.25
+    validation_split = 0.20
+    test_split = 0.20
     shuffle_dataset = True
     dataset_size = len(observational_dataset)
     indices = list(range(dataset_size))
-    split = int(np.floor(validation_split * dataset_size))
+    split_val = int(np.floor(validation_split * dataset_size))
+    split_test = int(np.floor(test_split * dataset_size))
     if shuffle_dataset:
         np.random.shuffle(indices)
-    train_indices, val_indices = indices[split:], indices[:split]
+    train_indices, val_indices, test_indices = indices[split_val+split_test:], indices[:split_val], indices[split_val:split_val+split_test]
     # Creating PT data samplers and loaders:
     train_sampler = SubsetRandomSampler(train_indices)
     valid_sampler = SubsetRandomSampler(val_indices)
+    test_sampler = SubsetRandomSampler(test_indices)
 
-    train_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16,
-                                               sampler=train_sampler)
-    validation_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16,
-                                                    sampler=valid_sampler)
+    train_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=train_sampler)
+    validation_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=valid_sampler)
+    test_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=test_sampler)
     adam_params = {"lr": lr}
     optimizer = ClippedAdam(adam_params)
     svi = SVI(simulator_model.model, simulator_model.guide, optimizer, Trace_ELBO())
 
     NUM_EPOCHS = epochs
     train_loss = {'Epochs': [], 'Training Loss': []}
-    test_loss = {'Epochs': [], 'Test Loss': []}
-    TEST_FREQUENCY = 5
-    SAVE_FREQUENCY = 5
+    validation_loss = {'Epochs': [], 'Test Loss': []}
+    TEST_FREQUENCY = 4
+    SAVE_FREQUENCY = 4
     # training loop
     consecutive_loss_increments = 0
     for epoch in range(NUM_EPOCHS):
@@ -97,18 +99,18 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file):
         logging.info("[epoch %03d]  average training loss: %.4f" % (epoch, epoch_loss_train))
         if (epoch+1) % TEST_FREQUENCY == 0:
             # report test diagnostics
-            epoch_loss_test = evaluate(svi, validation_loader, use_cuda=False)
-            test_loss['Epochs'].append(epoch)
-            test_loss['Test Loss'].append(epoch_loss_test)
-            logging.info("[epoch %03d] average test loss: %.4f" % (epoch, epoch_loss_test))
-            if len(test_loss['Test Loss']) > 1 and test_loss['Test Loss'][-1] > test_loss['Test Loss'][-2]:
+            epoch_loss_val = evaluate(svi, validation_loader, use_cuda=False)
+            validation_loss['Epochs'].append(epoch)
+            validation_loss['Test Loss'].append(epoch_loss_val)
+            logging.info("[epoch %03d] average validation loss: %.4f" % (epoch, epoch_loss_val))
+            if len(validation_loss['Test Loss']) > 1 and validation_loss['Test Loss'][-1] > validation_loss['Test Loss'][-2]:
                 consecutive_loss_increments += 1
             else:
                 consecutive_loss_increments = 0
         if (epoch+1) % SAVE_FREQUENCY == 0:
             logging.info("saving model and optimiser states to %s..." % exportdir)
             pd.DataFrame(data=train_loss).to_csv(exportdir+f"/train-loss-{x}-{y}.csv")
-            pd.DataFrame(data=test_loss).to_csv(exportdir+f"/test-loss-{x}-{y}.csv")
+            pd.DataFrame(data=validation_loss).to_csv(exportdir+f"/validation-loss-{x}-{y}.csv")
             torch.save(simulator_model.state_dict(), exportdir+f"/model-state-{x}-{y}")
             optimizer.save(exportdir+f"/optimiser-state-{x}-{y}")
             logging.info("done saving model and optimizer checkpoints to disk.")
@@ -116,14 +118,12 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file):
             break
     logging.info("saving model and optimiser states to %s..." % exportdir)
     pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss-{x}-{y}.csv")
-    pd.DataFrame(data=test_loss).to_csv(exportdir + f"/test-loss-{x}-{y}.csv")
+    pd.DataFrame(data=validation_loss).to_csv(exportdir + f"/validation-loss-{x}-{y}.csv")
     torch.save(simulator_model.state_dict(), exportdir + f"/model-state-{x}-{y}")
     optimizer.save(exportdir + f"/optimiser-state-{x}-{y}")
     logging.info("done saving model and optimizer checkpoints to disk.")
-    if consecutive_loss_increments >= 4:
-        write_to_file(output_file, x, y, test_loss['Test Loss'][-4])
-    else:
-        write_to_file(output_file, x, y, test_loss['Test Loss'][-1])
+    epoch_loss_test = evaluate(svi, test_loader, use_cuda=False)
+    write_to_file(output_file, x, y, epoch_loss_test)
 
 
 if __name__ == "__main__":

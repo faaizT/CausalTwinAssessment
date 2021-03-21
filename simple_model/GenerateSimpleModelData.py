@@ -15,8 +15,8 @@ class S_t():
             self.s_t_2 = s_t_2
 
     def next_state(self, action):
-        self.s_t_1 += np.random.normal(action*10, 1)
-        self.s_t_2 += np.random.normal(action*10, 1)
+        self.s_t_1 += np.random.normal(action*20, 1)
+        self.s_t_2 += np.random.normal(action*20, 1)
 
     def get_xt(self):
         return np.random.normal(self.s_t_1, 1)
@@ -26,7 +26,7 @@ class S_t():
 
 
 def physicians_policy(xt, ut):
-    if xt <= 80 and ut <= 120:
+    if xt <= 70 and ut <= 110:
         return 1
     return 0
 
