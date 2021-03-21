@@ -8,16 +8,39 @@ import pyro
 import torch
 from pyro.infer import SVI, Trace_ELBO
 from pyro.optim import ClippedAdam
+import pyro.distributions as dist
 
 from max_likelihood.utils.ObservationalDataset import ObservationalDataset
 from torch.utils.data.sampler import SubsetRandomSampler
 
+from simple_model.GenerateSimpleModelData import S_t, physicians_policy
 from simple_model.SimpleModel import cols, SimpleModel
 
 
 def write_to_file(file_name, x, y, loss):
-  with open(file_name, 'a', 1) as f:
-      f.write(str(x) + ',' + str(y) + ',' + str(loss) + os.linesep)
+    with open(file_name, 'a', 1) as f:
+        f.write(str(x) + ',' + str(y) + ',' + str(loss) + os.linesep)
+
+
+def get_policy_accuracy(model: SimpleModel):
+    df = pd.DataFrame()
+    for i in range(10000):
+        state = S_t()
+        s0_1, s0_2 = state.s_t[0], state.s_t[1]
+        xt, ut = state.get_xt(), state.get_ut()
+        action = physicians_policy(xt, ut)
+        df = df.append({'s0_1': s0_1, 's0_2': s0_2, 'x0': xt, 'a0': action}, ignore_index=True)
+    model.eval()
+    acc = 0
+    with torch.no_grad():
+        for index, row in df.iterrows():
+            s0_1, s0_2 = row['s0_1'], row['s0_2']
+            action, xt = row['a0'], row['x0']
+            pred_action = dist.Categorical(
+                logits=model.policy(torch.tensor((s0_1, s0_2)).float())).sample().numpy().item(0)
+            acc += (pred_action == action)
+    model.train()
+    return acc / len(df) * 100
 
 
 def train(svi, train_loader, use_cuda=False):
@@ -52,12 +75,12 @@ def evaluate(svi, test_loader, use_cuda=False):
     return total_epoch_loss_test
 
 
-def main(path, epochs, exportdir, lr, increment_factor, output_file):
+def main(path, epochs, exportdir, lr, increment_factor, output_file, accuracy_file):
     if increment_factor is not None:
         simulator_model = SimpleModel(increment_factor=tuple(increment_factor))
     else:
         simulator_model = SimpleModel()
-    x, y = simulator_model.increment_factor
+    x, y = simulator_model.increment_factor.numpy()
     log_file_name = f'{exportdir}/model_{x}-{y}.log'
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s",
                         handlers=[logging.FileHandler(log_file_name), logging.StreamHandler()])
@@ -124,6 +147,8 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file):
     logging.info("done saving model and optimizer checkpoints to disk.")
     epoch_loss_test = evaluate(svi, test_loader, use_cuda=False)
     write_to_file(output_file, x, y, epoch_loss_test)
+    policy_acc = get_policy_accuracy(model=simulator_model)
+    write_to_file(accuracy_file, x, y, policy_acc)
 
 
 if __name__ == "__main__":
@@ -132,6 +157,7 @@ if __name__ == "__main__":
     parser.add_argument("epochs", help="maximum number of epochs to train for", type=int)
     parser.add_argument("exportdir", help="path to output directory")
     parser.add_argument("output_file", help="Output file to contain final test loss results")
+    parser.add_argument("accuracy_file", help="Output file to contain policy accuracy")
     parser.add_argument("--lr", help="learning rate", type=float, default=0.01)
     parser.add_argument("--increment_factor", nargs='+', help="factor by which simulator increments s_t values",
                         type=int, default=None)
@@ -139,4 +165,7 @@ if __name__ == "__main__":
     if not os.path.exists(args.output_file):
         with open(args.output_file, "w") as f:
             f.write('x,y,test loss' + os.linesep)
-    main(args.path, args.epochs, args.exportdir, args.lr, args.increment_factor, args.output_file)
+    if not os.path.exists(args.accuracy_file):
+        with open(args.accuracy_file, "w") as f:
+            f.write('x,y,policy accuracy' + os.linesep)
+    main(args.path, args.epochs, args.exportdir, args.lr, args.increment_factor, args.output_file, args.accuracy_file)

@@ -6,23 +6,20 @@ import pandas as pd
 
 
 class S_t():
-    def __init__(self, s_t_1=None, s_t_2=None):
-        if s_t_1 is None or s_t_2 is None:
-            self.s_t_1 = np.random.normal(70, 20)
-            self.s_t_2 = np.random.normal(110, 40)
+    def __init__(self, s_t=None):
+        if s_t is None:
+            self.s_t = np.random.multivariate_normal([70, 110], [[20, 15], [15, 40]])
         else:
-            self.s_t_1 = s_t_1
-            self.s_t_2 = s_t_2
+            self.s_t = s_t
 
     def next_state(self, action):
-        self.s_t_1 += np.random.normal(action*20, 1)
-        self.s_t_2 += np.random.normal(action*20, 1)
+        self.s_t += np.random.multivariate_normal([20*action, 20*action], [[1, 0.5], [0.5, 1]])
 
     def get_xt(self):
-        return np.random.normal(self.s_t_1, 1)
+        return np.random.normal(self.s_t[0], 1)
 
     def get_ut(self):
-        return np.random.normal(self.s_t_2, 1)
+        return np.random.normal(self.s_t[1], 1)
 
 
 def physicians_policy(xt, ut):

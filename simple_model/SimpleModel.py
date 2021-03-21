@@ -12,11 +12,10 @@ class SimpleModel(nn.Module):
     def __init__(self, use_cuda=False, increment_factor=None):
         super().__init__()
         self.policy = Policy(2, 2)
-        self.st_1_network = SNetwork(4, 1)
-        self.st_2_network = SNetwork(4, 1)
+        self.st_network = SNetwork(4, 2)
         if increment_factor is None:
-            increment_factor = (10, 10)
-        self.increment_factor = increment_factor
+            increment_factor = (20, 20)
+        self.increment_factor = torch.tensor(increment_factor)
         self.use_cuda = use_cuda
         if use_cuda:
             self.cuda()
@@ -24,26 +23,27 @@ class SimpleModel(nn.Module):
     def model(self, mini_batch):
         pyro.module("simple_model", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
-            s_0_1 = pyro.sample("s_0_1", dist.Normal(70, 20))
-            s_0_2 = pyro.sample("s_0_2", dist.Normal(110, 40))
-            x_0_1 = pyro.sample("x_0", dist.Normal(s_0_1, 1), obs=mini_batch[:, 0, cols.index('X_t')])
-            a_0 = pyro.sample("a_0", dist.Categorical(logits=self.policy(torch.column_stack((s_0_1, s_0_2)))),
-                                 obs=mini_batch[:, 0, cols.index('A_t')])
-            s_1_1 = pyro.sample("s_1_1", dist.Normal(s_0_1 + a_0*self.increment_factor[0], 1))
-            s_1_2 = pyro.sample("s_1_2", dist.Normal(s_0_2 + a_0*self.increment_factor[1], 1))
-            x_1_1 = pyro.sample("x_1", dist.Normal(s_1_1, 1), obs=mini_batch[:, 1, cols.index('X_t')])
-            a_1 = pyro.sample("a_1", dist.Categorical(logits=self.policy(torch.column_stack((s_1_1, s_1_2)))),
-                                 obs=mini_batch[:, 1, cols.index('A_t')])
+            mu, sigma = torch.tensor((70, 110)).float(), torch.tensor([[20, 15], [15, 40]]).float()
+            s_0 = pyro.sample("s_0", dist.MultivariateNormal(mu, covariance_matrix=sigma))
+            x_0 = pyro.sample("x_0", dist.Normal(s_0[:, 0], 1), obs=mini_batch[:, 0, cols.index('X_t')])
+            a_0 = pyro.sample("a_0", dist.Categorical(logits=self.policy(s_0)), obs=mini_batch[:, 0, cols.index('A_t')])
+            increment_factor = torch.stack(len(mini_batch)*[self.increment_factor])
+            s_1 = pyro.sample("s_1", dist.MultivariateNormal(s_0 + torch.column_stack(2*[a_0])*increment_factor,
+                                                             torch.tensor([[1, 0.5], [0.5, 1]]).float()))
+            x_1 = pyro.sample("x_1", dist.Normal(s_1[:, 0], 1), obs=mini_batch[:, 1, cols.index('X_t')])
+            a_1 = pyro.sample("a_1", dist.Categorical(logits=self.policy(s_1)), obs=mini_batch[:, 1, cols.index('A_t')])
 
     def guide(self, mini_batch):
         pyro.module("simple_model", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
-            s_0_1 = pyro.sample("s_0_1", dist.Normal(70, 20))
-            s_0_2 = pyro.sample("s_0_2", dist.Normal(110, 40))
-            st_1_loc, st_1_scale = self.st_1_network(torch.column_stack((
-                s_0_1, s_0_2, mini_batch[:, 0, cols.index('A_t')], mini_batch[:, 1, cols.index('X_t')])))
-            st_2_loc, st_2_scale = self.st_2_network(torch.column_stack((
-                s_0_1, s_0_2, mini_batch[:, 0, cols.index('A_t')], mini_batch[:, 1, cols.index('X_t')])))
-            s_1_1 = pyro.sample("s_1_1", dist.Normal(st_1_loc[:, 0], torch.exp(st_1_scale[:, 0])))
-            s_1_2 = pyro.sample("s_1_2", dist.Normal(st_2_loc[:, 0], torch.exp(st_2_scale[:, 0])))
+            mu, sigma = torch.tensor((70, 110)).float(), torch.tensor([[20, 15], [15, 40]]).float()
+            s_0 = pyro.sample("s_0", dist.MultivariateNormal(mu, covariance_matrix=sigma))
+            st_loc, st_tril, st_diag = self.st_network(torch.column_stack((
+                s_0[:, 0], s_0[:, 1], mini_batch[:, 0, cols.index('A_t')], mini_batch[:, 1, cols.index('X_t')])))
+            z = torch.zeros(st_loc.size(0))
+            scale_tril = torch.stack([
+                st_diag[:, 0], z,
+                st_tril[:, 0], st_diag[:, 1]
+            ], dim=-1).view(-1, 2, 2)
+            s1 = pyro.sample("s_1", dist.MultivariateNormal(loc=st_loc, scale_tril=scale_tril))
 
