@@ -57,7 +57,8 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file):
         simulator_model = SimpleModel(increment_factor=tuple(increment_factor))
     else:
         simulator_model = SimpleModel()
-    log_file_name = f'{exportdir}/model_{simulator_model.increment_factor}.log'
+    x, y = simulator_model.increment_factor
+    log_file_name = f'{exportdir}/model_{x}-{y}.log'
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s",
                         handlers=[logging.FileHandler(log_file_name), logging.StreamHandler()])
     observational_dataset = ObservationalDataset(path, columns=cols)
@@ -106,25 +107,23 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file):
                 consecutive_loss_increments = 0
         if (epoch+1) % SAVE_FREQUENCY == 0:
             logging.info("saving model and optimiser states to %s..." % exportdir)
-            pd.DataFrame(data=train_loss).to_csv(exportdir+f"/train-loss-{simulator_model.increment_factor}.csv")
-            pd.DataFrame(data=test_loss).to_csv(exportdir+f"/test-loss-{simulator_model.increment_factor}.csv")
-            torch.save(simulator_model.state_dict(), exportdir+f"/model-state-{simulator_model.increment_factor}")
-            optimizer.save(exportdir+f"/optimiser-state-{simulator_model.increment_factor}")
+            pd.DataFrame(data=train_loss).to_csv(exportdir+f"/train-loss-{x}-{y}.csv")
+            pd.DataFrame(data=test_loss).to_csv(exportdir+f"/test-loss-{x}-{y}.csv")
+            torch.save(simulator_model.state_dict(), exportdir+f"/model-state-{x}-{y}")
+            optimizer.save(exportdir+f"/optimiser-state-{x}-{y}")
             logging.info("done saving model and optimizer checkpoints to disk.")
         if consecutive_loss_increments >= 4:
             break
     logging.info("saving model and optimiser states to %s..." % exportdir)
-    pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss-{simulator_model.increment_factor}.csv")
-    pd.DataFrame(data=test_loss).to_csv(exportdir + f"/test-loss-{simulator_model.increment_factor}.csv")
-    torch.save(simulator_model.state_dict(), exportdir + f"/model-state-{simulator_model.increment_factor}")
-    optimizer.save(exportdir + f"/optimiser-state-{simulator_model.increment_factor}")
+    pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss-{x}-{y}.csv")
+    pd.DataFrame(data=test_loss).to_csv(exportdir + f"/test-loss-{x}-{y}.csv")
+    torch.save(simulator_model.state_dict(), exportdir + f"/model-state-{x}-{y}")
+    optimizer.save(exportdir + f"/optimiser-state-{x}-{y}")
     logging.info("done saving model and optimizer checkpoints to disk.")
     if consecutive_loss_increments >= 4:
-        write_to_file(output_file, simulator_model.increment_factor[0], simulator_model.increment_factor[1],
-                      test_loss['Test Loss'][-4])
+        write_to_file(output_file, x, y, test_loss['Test Loss'][-4])
     else:
-        write_to_file(output_file, simulator_model.increment_factor[0], simulator_model.increment_factor[1],
-                      test_loss['Test Loss'][-1])
+        write_to_file(output_file, x, y, test_loss['Test Loss'][-1])
 
 
 if __name__ == "__main__":
