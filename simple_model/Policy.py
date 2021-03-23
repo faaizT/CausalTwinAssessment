@@ -31,20 +31,11 @@ class SNetwork(T.nn.Module):
         self.hid_to_loc = T.nn.Linear(hidden_1_dim, output_dim)
         self.hid_to_tril = T.nn.Linear(hidden_1_dim, int(output_dim*(output_dim-1)/2))
         self.hid_to_diag = T.nn.Linear(hidden_1_dim, output_dim)
-        self.tanh = T.nn.Tanh()
-
-        T.nn.init.xavier_uniform_(self.hid1.weight)
-        T.nn.init.zeros_(self.hid1.bias)
-        T.nn.init.xavier_uniform_(self.hid_to_loc.weight)
-        T.nn.init.zeros_(self.hid_to_loc.bias)
-        T.nn.init.xavier_uniform_(self.hid_to_tril.weight)
-        T.nn.init.zeros_(self.hid_to_tril.bias)
-        T.nn.init.xavier_uniform_(self.hid_to_diag.weight)
-        T.nn.init.zeros_(self.hid_to_diag.bias)
+        self.leakyRelu = T.nn.LeakyReLU()
 
     def forward(self, x):
-        z = self.tanh(self.hid1(x))
+        z = self.leakyRelu(self.hid1(x))
         z_loc = self.hid_to_loc(z)
         z_tril = self.hid_to_tril(z)
-        z_diag = torch.exp(self.hid_to_diag(z))
+        z_diag = torch.square(self.hid_to_diag(z)) + 0.01
         return z_loc, z_tril, z_diag
