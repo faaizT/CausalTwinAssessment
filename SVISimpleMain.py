@@ -22,8 +22,8 @@ def write_to_file(file_name, x, y, loss):
         f.write(str(x) + ',' + str(y) + ',' + str(loss) + os.linesep)
 
 
-def delete_redundant_states(dir):
-    pattern = "(model|optimiser)-state-[0-9]+-[0-9]+-[0-9]+"
+def delete_redundant_states(dir, x, y):
+    pattern = f"(model|optimiser)-state-{x}-{y}-[0-9]+"
     for f in os.listdir(dir):
         if re.search(pattern, f):
             os.remove(os.path.join(dir, f))
@@ -165,7 +165,7 @@ def main(path, epochs, exportdir, lr, weight_decay, increment_factor, output_fil
     policy_acc = get_policy_accuracy(model=simulator_model)
     write_to_file(accuracy_file, x, y, policy_acc)
     if delete_states:
-        delete_redundant_states(exportdir)
+        delete_redundant_states(exportdir, x, y)
 
 
 if __name__ == "__main__":
