@@ -94,7 +94,7 @@ def save_states(model, optimizer, exportdir, iter_num=None, save_final=False):
     logging.info("done saving model and optimizer checkpoints to disk.")
 
 
-def main(path, epochs, exportdir, lr, increment_factor, output_file, accuracy_file, delete_states):
+def main(path, epochs, exportdir, lr, weight_decay, increment_factor, output_file, accuracy_file, delete_states):
     if increment_factor is not None:
         simulator_model = SimpleModel(increment_factor=tuple(increment_factor))
     else:
@@ -123,7 +123,7 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file, accuracy_fi
     train_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=train_sampler)
     validation_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=valid_sampler)
     test_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=test_sampler)
-    adam_params = {"lr": lr}
+    adam_params = {"lr": lr, "weight_decay": weight_decay}
     optimizer = ClippedAdam(adam_params)
     svi = SVI(simulator_model.model, simulator_model.guide, optimizer, Trace_ELBO())
 
@@ -176,6 +176,7 @@ if __name__ == "__main__":
     parser.add_argument("output_file", help="Output file to contain final test loss results")
     parser.add_argument("accuracy_file", help="Output file to contain policy accuracy")
     parser.add_argument("--lr", help="learning rate", type=float, default=0.01)
+    parser.add_argument("--weight_decay", help="weight decay (L2 penalty)", type=float, default=0.)
     parser.add_argument("--increment_factor", nargs='+', help="factor by which simulator increments s_t values",
                         type=int, default=None)
     parser.add_argument("--delete_states", help="delete redundant states from exportdir", type=bool, default=False)
@@ -186,5 +187,5 @@ if __name__ == "__main__":
     if not os.path.exists(args.accuracy_file):
         with open(args.accuracy_file, "w") as f:
             f.write('x,y,policy accuracy' + os.linesep)
-    main(args.path, args.epochs, args.exportdir, args.lr, args.increment_factor, args.output_file, args.accuracy_file,
-         args.delete_states)
+    main(args.path, args.epochs, args.exportdir, args.lr, args.weight_decay, args.increment_factor, args.output_file,
+         args.accuracy_file, args.delete_states)
