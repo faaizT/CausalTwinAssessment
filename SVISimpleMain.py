@@ -153,6 +153,7 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file, accuracy_fi
     epoch_loss_test = evaluate(svi, test_loader, use_cuda=False)
     logging.info("last epoch error: %.4f" % epoch_loss_test)
     min_val, idx = min((val, idx) for (idx, val) in enumerate(validation_loss['Test Loss']))
+    logging.info(f"Index chosen: {idx}")
     simulator_model.load_state_dict(torch.load(exportdir + f"/model-state-{x}-{y}-{idx}"))
     optimizer.load(exportdir + f"/model-state-{x}-{y}-{idx}")
     simulator_model.eval()
