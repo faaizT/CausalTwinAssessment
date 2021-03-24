@@ -22,9 +22,12 @@ class S_t():
         return np.random.normal(self.s_t[1], 1)
 
 
-def physicians_policy(xt, ut):
-    if xt <= 70 and ut <= 110:
-        return 1
+def physicians_policy(xt, ut, return_prob=False):
+    if xt <= 90 and ut <= 150:
+        prob = min(240 - xt - ut, 240)/240
+        if return_prob:
+            return prob
+        return np.random.binomial(1, prob)
     return 0
 
 

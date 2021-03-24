@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import re
 
 import pandas as pd
 import numpy as np
@@ -9,7 +10,6 @@ import torch
 from pyro.infer import SVI, Trace_ELBO
 from pyro.optim import ClippedAdam
 import pyro.distributions as dist
-
 from max_likelihood.utils.ObservationalDataset import ObservationalDataset
 from torch.utils.data.sampler import SubsetRandomSampler
 
@@ -20,6 +20,13 @@ from simple_model.SimpleModel import cols, SimpleModel
 def write_to_file(file_name, x, y, loss):
     with open(file_name, 'a', 1) as f:
         f.write(str(x) + ',' + str(y) + ',' + str(loss) + os.linesep)
+
+
+def delete_redundant_states(dir):
+    pattern = "(model|optimiser)-state-[0-9]+-[0-9]+-[0-9]+"
+    for f in os.listdir(dir):
+        if re.search(pattern, f):
+            os.remove(os.path.join(dir, f))
 
 
 def get_policy_accuracy(model: SimpleModel):
@@ -75,7 +82,19 @@ def evaluate(svi, test_loader, use_cuda=False):
     return total_epoch_loss_test
 
 
-def main(path, epochs, exportdir, lr, increment_factor, output_file, accuracy_file):
+def save_states(model, optimizer, exportdir, iter_num=None, save_final=False):
+    logging.info("saving model and optimiser states to %s..." % exportdir)
+    x, y = model.increment_factor.numpy()
+    if save_final:
+        torch.save(model.state_dict(), exportdir + f"/model-state-{x}-{y}-final")
+        optimizer.save(exportdir + f"/optimiser-state-{x}-{y}-final")
+    else:
+        torch.save(model.state_dict(), exportdir + f"/model-state-{x}-{y}-{iter_num}")
+        optimizer.save(exportdir + f"/optimiser-state-{x}-{y}-{iter_num}")
+    logging.info("done saving model and optimizer checkpoints to disk.")
+
+
+def main(path, epochs, exportdir, lr, increment_factor, output_file, accuracy_file, delete_states):
     if increment_factor is not None:
         simulator_model = SimpleModel(increment_factor=tuple(increment_factor))
     else:
@@ -111,44 +130,41 @@ def main(path, epochs, exportdir, lr, increment_factor, output_file, accuracy_fi
     NUM_EPOCHS = epochs
     train_loss = {'Epochs': [], 'Training Loss': []}
     validation_loss = {'Epochs': [], 'Test Loss': []}
-    TEST_FREQUENCY = 4
-    SAVE_FREQUENCY = 4
+    SAVE_N_TEST_FREQUENCY = 4
     # training loop
-    consecutive_loss_increments = 0
+    i = 0
     for epoch in range(NUM_EPOCHS):
         epoch_loss_train = train(svi, train_loader, use_cuda=False)
         train_loss['Epochs'].append(epoch)
         train_loss['Training Loss'].append(epoch_loss_train)
         logging.info("[epoch %03d]  average training loss: %.4f" % (epoch, epoch_loss_train))
-        if (epoch+1) % TEST_FREQUENCY == 0:
+        if (epoch+1) % SAVE_N_TEST_FREQUENCY == 0:
             # report test diagnostics
             epoch_loss_val = evaluate(svi, validation_loader, use_cuda=False)
             validation_loss['Epochs'].append(epoch)
             validation_loss['Test Loss'].append(epoch_loss_val)
             logging.info("[epoch %03d] average validation loss: %.4f" % (epoch, epoch_loss_val))
-            if len(validation_loss['Test Loss']) > 1 and validation_loss['Test Loss'][-1] > validation_loss['Test Loss'][-2]:
-                consecutive_loss_increments += 1
-            else:
-                consecutive_loss_increments = 0
-        if (epoch+1) % SAVE_FREQUENCY == 0:
-            logging.info("saving model and optimiser states to %s..." % exportdir)
             pd.DataFrame(data=train_loss).to_csv(exportdir+f"/train-loss-{x}-{y}.csv")
             pd.DataFrame(data=validation_loss).to_csv(exportdir+f"/validation-loss-{x}-{y}.csv")
-            torch.save(simulator_model.state_dict(), exportdir+f"/model-state-{x}-{y}")
-            optimizer.save(exportdir+f"/optimiser-state-{x}-{y}")
-            logging.info("done saving model and optimizer checkpoints to disk.")
-        if consecutive_loss_increments >= 4:
-            break
-    logging.info("saving model and optimiser states to %s..." % exportdir)
+            save_states(simulator_model,optimizer, exportdir, iter_num=i)
+            i += 1
     pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss-{x}-{y}.csv")
     pd.DataFrame(data=validation_loss).to_csv(exportdir + f"/validation-loss-{x}-{y}.csv")
-    torch.save(simulator_model.state_dict(), exportdir + f"/model-state-{x}-{y}")
-    optimizer.save(exportdir + f"/optimiser-state-{x}-{y}")
-    logging.info("done saving model and optimizer checkpoints to disk.")
     epoch_loss_test = evaluate(svi, test_loader, use_cuda=False)
+    logging.info("last epoch error: %.4f" % epoch_loss_test)
+    min_val, idx = min((val, idx) for (idx, val) in enumerate(validation_loss['Test Loss']))
+    simulator_model.load_state_dict(torch.load(exportdir + f"/model-state-{x}-{y}-{idx}"))
+    optimizer.load(exportdir + f"/model-state-{x}-{y}-{idx}")
+    simulator_model.eval()
+    svi = SVI(simulator_model.model, simulator_model.guide, optimizer, Trace_ELBO())
+    epoch_loss_test = evaluate(svi, test_loader, use_cuda=False)
+    logging.info("Chosen epoch error: %.4f" % epoch_loss_test)
+    save_states(simulator_model, optimizer, exportdir, save_final=True)
     write_to_file(output_file, x, y, epoch_loss_test)
     policy_acc = get_policy_accuracy(model=simulator_model)
     write_to_file(accuracy_file, x, y, policy_acc)
+    if delete_states:
+        delete_redundant_states(exportdir)
 
 
 if __name__ == "__main__":
@@ -161,6 +177,7 @@ if __name__ == "__main__":
     parser.add_argument("--lr", help="learning rate", type=float, default=0.01)
     parser.add_argument("--increment_factor", nargs='+', help="factor by which simulator increments s_t values",
                         type=int, default=None)
+    parser.add_argument("--delete_states", help="delete redundant states from exportdir", type=bool, default=False)
     args = parser.parse_args()
     if not os.path.exists(args.output_file):
         with open(args.output_file, "w") as f:
@@ -168,4 +185,5 @@ if __name__ == "__main__":
     if not os.path.exists(args.accuracy_file):
         with open(args.accuracy_file, "w") as f:
             f.write('x,y,policy accuracy' + os.linesep)
-    main(args.path, args.epochs, args.exportdir, args.lr, args.increment_factor, args.output_file, args.accuracy_file)
+    main(args.path, args.epochs, args.exportdir, args.lr, args.increment_factor, args.output_file, args.accuracy_file,
+         args.delete_states)
