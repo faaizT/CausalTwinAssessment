@@ -1,26 +1,31 @@
+import numpy as np
 import pyro
 import pyro.distributions as dist
 import torch
 from torch import nn
 from torch.distributions import constraints
 
-from simple_model.Policy import Policy, SNetwork
+from simple_model.Policy import Policy, SNetwork, physicians_policy
 
 cols = ['t', 'X_t', 'A_t']
 
 
 class SimpleModel(nn.Module):
-    def __init__(self, learn_initial_state, use_cuda=False, increment_factor=None, policy=None):
+    def __init__(self, learn_initial_state, phy_pol, increment_factor, rho, use_cuda=False):
         super().__init__()
-        if policy is None:
-            self.policy = Policy(2, 2)
+        if phy_pol:
+            self.policy = physicians_policy
         else:
-            self.policy = policy
+            self.policy = Policy(2, 2)
         self.st_network = SNetwork(4, 2)
         if increment_factor is None:
             increment_factor = (20, 20)
         self.increment_factor = torch.tensor(increment_factor)
         self.learn_initial_state = learn_initial_state
+        if rho is None:
+            self.rho = 15 / np.sqrt(20 * 40)
+        else:
+            self.rho = rho
         self.use_cuda = use_cuda
         if use_cuda:
             self.cuda()
@@ -33,7 +38,8 @@ class SimpleModel(nn.Module):
                 sigma = pyro.param("sigma_model", torch.tensor([[1, 0], [0, 1]]).float(),
                                    constraint=constraints.positive_definite)
             else:
-                mu, sigma = torch.tensor((70, 110)).float(), torch.tensor([[20, 15], [15, 40]]).float()
+                mu = torch.tensor((70, 110)).float()
+                sigma = torch.tensor([[20, self.rho*np.sqrt(40*20)], [self.rho*np.sqrt(40*20), 40]]).float()
             s_0 = pyro.sample("s_0", dist.MultivariateNormal(mu, covariance_matrix=sigma))
             x_0 = pyro.sample("x_0", dist.Normal(s_0[:, 0], 1), obs=mini_batch[:, 0, cols.index('X_t')])
             a_0 = pyro.sample("a_0", dist.Categorical(logits=self.policy(s_0)), obs=mini_batch[:, 0, cols.index('A_t')])
@@ -51,7 +57,8 @@ class SimpleModel(nn.Module):
                 sigma = pyro.param("sigma_guide", torch.tensor([[1, 0], [0, 1]]).float(),
                                    constraint=constraints.positive_definite)
             else:
-                mu, sigma = torch.tensor((70, 110)).float(), torch.tensor([[20, 15], [15, 40]]).float()
+                mu = torch.tensor((70, 110)).float()
+                sigma = torch.tensor([[20, self.rho * np.sqrt(40 * 20)], [self.rho * np.sqrt(40 * 20), 40]]).float()
             s_0 = pyro.sample("s_0", dist.MultivariateNormal(mu, covariance_matrix=sigma))
             st_loc, st_tril, st_diag = self.st_network(torch.column_stack((
                 s_0[:, 0], s_0[:, 1], mini_batch[:, 0, cols.index('A_t')], mini_batch[:, 1, cols.index('X_t')])))

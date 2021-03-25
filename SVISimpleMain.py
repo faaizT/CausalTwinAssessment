@@ -118,13 +118,10 @@ def save_states(model, optimizer, exportdir, iter_num=None, save_final=False):
     logging.info("done saving model and optimizer checkpoints to disk.")
 
 
-def main(path, epochs, exportdir, lr, weight_decay, increment_factor, output_file, accuracy_file, delete_states,
+def main(path, epochs, exportdir, lr, weight_decay, rho, increment_factor, output_file, accuracy_file, delete_states,
          phy_pol, learn_initial_state):
-    if phy_pol:
-        simulator_model = SimpleModel(learn_initial_state=learn_initial_state, increment_factor=increment_factor,
-                                      policy=Policy.physicians_policy)
-    else:
-        simulator_model = SimpleModel(learn_initial_state=learn_initial_state, increment_factor=increment_factor)
+    simulator_model = SimpleModel(learn_initial_state=learn_initial_state, increment_factor=increment_factor,
+                                  phy_pol=phy_pol, rho=rho)
     x, y = simulator_model.increment_factor.numpy()
     log_file_name = f'{exportdir}/model_{x}-{y}.log'
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s",
@@ -207,6 +204,7 @@ if __name__ == "__main__":
     parser.add_argument("accuracy_file", help="Output file to contain policy accuracy")
     parser.add_argument("--lr", help="learning rate", type=float, default=0.01)
     parser.add_argument("--weight_decay", help="weight decay (L2 penalty)", type=float, default=0.)
+    parser.add_argument("--rho", help="Correlation coefficient of S_0 components", type=float, default=None)
     parser.add_argument("--increment_factor", nargs='+', help="factor by which simulator increments s_t values",
                         type=int, default=None)
     parser.add_argument("--delete_states", help="delete redundant states from exportdir", type=bool, default=False)
@@ -219,5 +217,5 @@ if __name__ == "__main__":
     if not os.path.exists(args.accuracy_file) and not args.phy_pol:
         with open(args.accuracy_file, "w") as f:
             f.write('x,y,policy accuracy' + os.linesep)
-    main(args.path, args.epochs, args.exportdir, args.lr, args.weight_decay, args.increment_factor, args.output_file,
+    main(args.path, args.epochs, args.exportdir, args.lr, args.weight_decay, args.rho, args.increment_factor, args.output_file,
          args.accuracy_file, args.delete_states, args.phy_pol, args.learn_initial_state)
