@@ -28,7 +28,12 @@ class SimpleModel(nn.Module):
     def model(self, mini_batch):
         pyro.module("simple_model", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
-            mu, sigma = torch.tensor((70, 110)).float(), torch.tensor([[20, 15], [15, 40]]).float()
+            if self.learn_initial_state:
+                mu = pyro.param("mu_model", torch.rand(2).float())
+                sigma = pyro.param("sigma_model", torch.tensor([[1, 0], [0, 1]]).float(),
+                                   constraint=constraints.positive_definite)
+            else:
+                mu, sigma = torch.tensor((70, 110)).float(), torch.tensor([[20, 15], [15, 40]]).float()
             s_0 = pyro.sample("s_0", dist.MultivariateNormal(mu, covariance_matrix=sigma))
             x_0 = pyro.sample("x_0", dist.Normal(s_0[:, 0], 1), obs=mini_batch[:, 0, cols.index('X_t')])
             a_0 = pyro.sample("a_0", dist.Categorical(logits=self.policy(s_0)), obs=mini_batch[:, 0, cols.index('A_t')])
@@ -42,8 +47,8 @@ class SimpleModel(nn.Module):
         pyro.module("simple_model", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
             if self.learn_initial_state:
-                mu = pyro.param("mu", torch.rand(2).float())
-                sigma = pyro.param("sigma", torch.tensor([[1, 0], [0, 1]]).float(),
+                mu = pyro.param("mu_guide", torch.rand(2).float())
+                sigma = pyro.param("sigma_guide", torch.tensor([[1, 0], [0, 1]]).float(),
                                    constraint=constraints.positive_definite)
             else:
                 mu, sigma = torch.tensor((70, 110)).float(), torch.tensor([[20, 15], [15, 40]]).float()

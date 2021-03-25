@@ -17,6 +17,29 @@ from simple_model import Policy
 from simple_model.GenerateSimpleModelData import S_t, physicians_policy
 from simple_model.SimpleModel import cols, SimpleModel
 
+params = {'Epochs': [],
+          'mu_guide_1': [], 'mu_guide_2': [], 'sigma_guide_11': [],
+          'sigma_guide_12': [], 'sigma_guide_21': [], 'sigma_guide_22': [],
+          'mu_model_1': [], 'mu_model_2': [], 'sigma_model_11': [],
+          'sigma_model_12': [], 'sigma_model_21': [], 'sigma_model_22': []}
+
+
+def save_params(epoch):
+    global params
+    params['Epochs'].append(epoch)
+    params['mu_guide_1'].append(pyro.param("mu_guide")[0].item())
+    params['mu_guide_2'].append(pyro.param("mu_guide")[1].item())
+    params['sigma_guide_11'].append(pyro.param("sigma_guide")[0][0].item())
+    params['sigma_guide_12'].append(pyro.param("sigma_guide")[0][1].item())
+    params['sigma_guide_21'].append(pyro.param("sigma_guide")[1][0].item())
+    params['sigma_guide_22'].append(pyro.param("sigma_guide")[1][1].item())
+    params['mu_model_1'].append(pyro.param("mu_model")[0].item())
+    params['mu_model_2'].append(pyro.param("mu_model")[1].item())
+    params['sigma_model_11'].append(pyro.param("sigma_model")[0][0].item())
+    params['sigma_model_12'].append(pyro.param("sigma_model")[0][1].item())
+    params['sigma_model_21'].append(pyro.param("sigma_model")[1][0].item())
+    params['sigma_model_22'].append(pyro.param("sigma_model")[1][1].item())
+
 
 def write_to_file(file_name, x, y, loss):
     with open(file_name, 'a', 1) as f:
@@ -134,8 +157,6 @@ def main(path, epochs, exportdir, lr, weight_decay, increment_factor, output_fil
     NUM_EPOCHS = epochs
     train_loss = {'Epochs': [], 'Training Loss': []}
     validation_loss = {'Epochs': [], 'Test Loss': []}
-    if learn_initial_state:
-        params = {'Epochs': [], 'mu_1': [], 'mu_2': [], 'sigma_11': [], 'sigma_12': [], 'sigma_21': [], 'sigma_22': []}
     SAVE_N_TEST_FREQUENCY = 4
     # training loop
     i = 0
@@ -151,14 +172,8 @@ def main(path, epochs, exportdir, lr, weight_decay, increment_factor, output_fil
             validation_loss['Test Loss'].append(epoch_loss_val)
             logging.info("[epoch %03d] average validation loss: %.4f" % (epoch, epoch_loss_val))
             if learn_initial_state:
-                params['Epochs'].append(epoch)
-                params['mu_1'].append(pyro.param("mu")[0].item())
-                params['mu_2'].append(pyro.param("mu")[1].item())
-                params['sigma_11'].append(pyro.param("sigma")[0][0].item())
-                params['sigma_12'].append(pyro.param("sigma")[0][1].item())
-                params['sigma_21'].append(pyro.param("sigma")[1][0].item())
-                params['sigma_22'].append(pyro.param("sigma")[1][1].item())
-                pd.DataFrame(data=params).to_csv(exportdir+f"/initial-state-params-{x}-{y}.csv")
+                save_params(epoch)
+                pd.DataFrame(data=params).to_csv(exportdir + f"/initial-state-params-{x}-{y}.csv")
             pd.DataFrame(data=train_loss).to_csv(exportdir+f"/train-loss-{x}-{y}.csv")
             pd.DataFrame(data=validation_loss).to_csv(exportdir+f"/validation-loss-{x}-{y}.csv")
             save_states(simulator_model,optimizer, exportdir, iter_num=i)
