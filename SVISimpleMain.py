@@ -13,6 +13,7 @@ import pyro.distributions as dist
 from max_likelihood.utils.ObservationalDataset import ObservationalDataset
 from torch.utils.data.sampler import SubsetRandomSampler
 
+from simple_model import Policy
 from simple_model.GenerateSimpleModelData import S_t, physicians_policy
 from simple_model.SimpleModel import cols, SimpleModel
 
@@ -94,15 +95,17 @@ def save_states(model, optimizer, exportdir, iter_num=None, save_final=False):
     logging.info("done saving model and optimizer checkpoints to disk.")
 
 
-def main(path, epochs, exportdir, lr, weight_decay, increment_factor, output_file, accuracy_file, delete_states):
-    if increment_factor is not None:
-        simulator_model = SimpleModel(increment_factor=tuple(increment_factor))
+def main(path, epochs, exportdir, lr, weight_decay, increment_factor, output_file, accuracy_file, delete_states,
+         phy_pol):
+    if phy_pol:
+        simulator_model = SimpleModel(increment_factor=increment_factor, policy=Policy.physicians_policy)
     else:
-        simulator_model = SimpleModel()
+        simulator_model = SimpleModel(increment_factor=increment_factor)
     x, y = simulator_model.increment_factor.numpy()
     log_file_name = f'{exportdir}/model_{x}-{y}.log'
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s",
                         handlers=[logging.FileHandler(log_file_name), logging.StreamHandler()])
+    logging.info(f"X: {x}. Y: {y}")
     observational_dataset = ObservationalDataset(path, columns=cols)
     pyro.clear_param_store()
     validation_split = 0.20
@@ -180,12 +183,13 @@ if __name__ == "__main__":
     parser.add_argument("--increment_factor", nargs='+', help="factor by which simulator increments s_t values",
                         type=int, default=None)
     parser.add_argument("--delete_states", help="delete redundant states from exportdir", type=bool, default=False)
+    parser.add_argument("--phy_pol", help="use physicians' policy in model", type=bool, default=False)
     args = parser.parse_args()
     if not os.path.exists(args.output_file):
         with open(args.output_file, "w") as f:
             f.write('x,y,test loss' + os.linesep)
-    if not os.path.exists(args.accuracy_file):
+    if not os.path.exists(args.accuracy_file) and not args.phy_pol:
         with open(args.accuracy_file, "w") as f:
             f.write('x,y,policy accuracy' + os.linesep)
     main(args.path, args.epochs, args.exportdir, args.lr, args.weight_decay, args.increment_factor, args.output_file,
-         args.accuracy_file, args.delete_states)
+         args.accuracy_file, args.delete_states, args.phy_pol)

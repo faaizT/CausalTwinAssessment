@@ -9,9 +9,12 @@ cols = ['t', 'X_t', 'A_t']
 
 
 class SimpleModel(nn.Module):
-    def __init__(self, use_cuda=False, increment_factor=None):
+    def __init__(self, use_cuda=False, increment_factor=None, policy=None):
         super().__init__()
-        self.policy = Policy(2, 2)
+        if policy is None:
+            self.policy = Policy(2, 2)
+        else:
+            self.policy = policy
         self.st_network = SNetwork(4, 2)
         if increment_factor is None:
             increment_factor = (20, 20)

@@ -1,6 +1,6 @@
 import torch
 import torch as T
-
+import pyro.distributions as dist
 
 class Policy(T.nn.Module):
     def __init__(self, input_dim, output_dim, hidden_1_dim=8, hidden_2_dim=8):
@@ -22,6 +22,13 @@ class Policy(T.nn.Module):
         z = self.leakyRelu(self.hid2(z))
         z = self.outp(z)
         return z
+
+
+def physicians_policy(st):
+    xt = dist.Normal(st[:, 0], 1).sample()
+    ut = dist.Normal(st[:, 1], 1).sample()
+    prob_action = torch.where((xt <= 90) & (ut <= 150), torch.minimum(240-xt-ut, torch.tensor(240).float()).float()/240, torch.tensor(0).float()).float()
+    return torch.column_stack((torch.zeros(st.size(0)).float(), torch.logit(prob_action, eps=1e-6)))
 
 
 class SNetwork(T.nn.Module):
