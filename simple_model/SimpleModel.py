@@ -2,6 +2,7 @@ import pyro
 import pyro.distributions as dist
 import torch
 from torch import nn
+from torch.distributions import constraints
 
 from simple_model.Policy import Policy, SNetwork
 
@@ -9,7 +10,7 @@ cols = ['t', 'X_t', 'A_t']
 
 
 class SimpleModel(nn.Module):
-    def __init__(self, use_cuda=False, increment_factor=None, policy=None):
+    def __init__(self, learn_initial_state, use_cuda=False, increment_factor=None, policy=None):
         super().__init__()
         if policy is None:
             self.policy = Policy(2, 2)
@@ -19,6 +20,7 @@ class SimpleModel(nn.Module):
         if increment_factor is None:
             increment_factor = (20, 20)
         self.increment_factor = torch.tensor(increment_factor)
+        self.learn_initial_state = learn_initial_state
         self.use_cuda = use_cuda
         if use_cuda:
             self.cuda()
@@ -39,7 +41,12 @@ class SimpleModel(nn.Module):
     def guide(self, mini_batch):
         pyro.module("simple_model", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
-            mu, sigma = torch.tensor((70, 110)).float(), torch.tensor([[20, 15], [15, 40]]).float()
+            if self.learn_initial_state:
+                mu = pyro.param("mu", torch.rand(2).float())
+                sigma = pyro.param("sigma", torch.tensor([[1, 0], [0, 1]]).float(),
+                                   constraint=constraints.positive_definite)
+            else:
+                mu, sigma = torch.tensor((70, 110)).float(), torch.tensor([[20, 15], [15, 40]]).float()
             s_0 = pyro.sample("s_0", dist.MultivariateNormal(mu, covariance_matrix=sigma))
             st_loc, st_tril, st_diag = self.st_network(torch.column_stack((
                 s_0[:, 0], s_0[:, 1], mini_batch[:, 0, cols.index('A_t')], mini_batch[:, 1, cols.index('X_t')])))

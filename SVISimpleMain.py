@@ -96,11 +96,12 @@ def save_states(model, optimizer, exportdir, iter_num=None, save_final=False):
 
 
 def main(path, epochs, exportdir, lr, weight_decay, increment_factor, output_file, accuracy_file, delete_states,
-         phy_pol):
+         phy_pol, learn_initial_state):
     if phy_pol:
-        simulator_model = SimpleModel(increment_factor=increment_factor, policy=Policy.physicians_policy)
+        simulator_model = SimpleModel(learn_initial_state=learn_initial_state, increment_factor=increment_factor,
+                                      policy=Policy.physicians_policy)
     else:
-        simulator_model = SimpleModel(increment_factor=increment_factor)
+        simulator_model = SimpleModel(learn_initial_state=learn_initial_state, increment_factor=increment_factor)
     x, y = simulator_model.increment_factor.numpy()
     log_file_name = f'{exportdir}/model_{x}-{y}.log'
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s",
@@ -133,6 +134,8 @@ def main(path, epochs, exportdir, lr, weight_decay, increment_factor, output_fil
     NUM_EPOCHS = epochs
     train_loss = {'Epochs': [], 'Training Loss': []}
     validation_loss = {'Epochs': [], 'Test Loss': []}
+    if learn_initial_state:
+        params = {'Epochs': [], 'mu_1': [], 'mu_2': [], 'sigma_11': [], 'sigma_12': [], 'sigma_21': [], 'sigma_22': []}
     SAVE_N_TEST_FREQUENCY = 4
     # training loop
     i = 0
@@ -147,6 +150,15 @@ def main(path, epochs, exportdir, lr, weight_decay, increment_factor, output_fil
             validation_loss['Epochs'].append(epoch)
             validation_loss['Test Loss'].append(epoch_loss_val)
             logging.info("[epoch %03d] average validation loss: %.4f" % (epoch, epoch_loss_val))
+            if learn_initial_state:
+                params['Epochs'].append(epoch)
+                params['mu_1'].append(pyro.param("mu")[0].item())
+                params['mu_2'].append(pyro.param("mu")[1].item())
+                params['sigma_11'].append(pyro.param("sigma")[0][0].item())
+                params['sigma_12'].append(pyro.param("sigma")[0][1].item())
+                params['sigma_21'].append(pyro.param("sigma")[1][0].item())
+                params['sigma_22'].append(pyro.param("sigma")[1][1].item())
+                pd.DataFrame(data=params).to_csv(exportdir+f"/initial-state-params-{x}-{y}.csv")
             pd.DataFrame(data=train_loss).to_csv(exportdir+f"/train-loss-{x}-{y}.csv")
             pd.DataFrame(data=validation_loss).to_csv(exportdir+f"/validation-loss-{x}-{y}.csv")
             save_states(simulator_model,optimizer, exportdir, iter_num=i)
@@ -184,6 +196,7 @@ if __name__ == "__main__":
                         type=int, default=None)
     parser.add_argument("--delete_states", help="delete redundant states from exportdir", type=bool, default=False)
     parser.add_argument("--phy_pol", help="use physicians' policy in model", type=bool, default=False)
+    parser.add_argument("--learn_initial_state", help="learn initial state distribution", type=bool, default=False)
     args = parser.parse_args()
     if not os.path.exists(args.output_file):
         with open(args.output_file, "w") as f:
@@ -192,4 +205,4 @@ if __name__ == "__main__":
         with open(args.accuracy_file, "w") as f:
             f.write('x,y,policy accuracy' + os.linesep)
     main(args.path, args.epochs, args.exportdir, args.lr, args.weight_decay, args.increment_factor, args.output_file,
-         args.accuracy_file, args.delete_states, args.phy_pol)
+         args.accuracy_file, args.delete_states, args.phy_pol, args.learn_initial_state)
