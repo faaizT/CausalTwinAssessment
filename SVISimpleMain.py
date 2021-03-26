@@ -110,16 +110,16 @@ def save_states(model, optimizer, exportdir, iter_num=None, save_final=False):
     logging.info("done saving model and optimizer checkpoints to disk.")
 
 
-def main(path, epochs, exportdir, lr, weight_decay, rho, increment_factor, output_file, accuracy_file, delete_states,
-         phy_pol, learn_initial_state):
-    simulator_model = SimpleModel(learn_initial_state=learn_initial_state, increment_factor=increment_factor,
-                                  phy_pol=phy_pol, rho=rho)
+def main(args):
+    simulator_model = SimpleModel(learn_initial_state=args.learn_initial_state, increment_factor=args.increment_factor,
+                                  phy_pol=args.phy_pol, rho=args.rho)
     x, y = simulator_model.increment_factor.numpy()
+    exportdir = args.exportdir
     log_file_name = f'{exportdir}/model_{x}-{y}.log'
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s",
                         handlers=[logging.FileHandler(log_file_name), logging.StreamHandler()])
     logging.info(f"X: {x}. Y: {y}")
-    observational_dataset = ObservationalDataset(path, columns=cols)
+    observational_dataset = ObservationalDataset(args.path, columns=cols)
     pyro.clear_param_store()
     validation_split = 0.20
     test_split = 0.20
@@ -139,11 +139,11 @@ def main(path, epochs, exportdir, lr, weight_decay, rho, increment_factor, outpu
     train_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=train_sampler)
     validation_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=valid_sampler)
     test_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=test_sampler)
-    adam_params = {"lr": lr, "weight_decay": weight_decay}
+    adam_params = {"lr": args.lr, "weight_decay": args.weight_decay, "lrd": args.lrd}
     optimizer = ClippedAdam(adam_params)
     svi = SVI(simulator_model.model, simulator_model.guide, optimizer, Trace_ELBO())
 
-    NUM_EPOCHS = epochs
+    NUM_EPOCHS = args.epochs
     train_loss = {'Epochs': [], 'Training Loss': []}
     validation_loss = {'Epochs': [], 'Test Loss': []}
     SAVE_N_TEST_FREQUENCY = 4
@@ -160,7 +160,7 @@ def main(path, epochs, exportdir, lr, weight_decay, rho, increment_factor, outpu
             validation_loss['Epochs'].append(epoch)
             validation_loss['Test Loss'].append(epoch_loss_val)
             logging.info("[epoch %03d] average validation loss: %.4f" % (epoch, epoch_loss_val))
-            if learn_initial_state:
+            if args.learn_initial_state:
                 save_params(epoch)
                 pd.DataFrame(data=params).to_csv(exportdir + f"/initial-state-params-{x}-{y}.csv")
             pd.DataFrame(data=train_loss).to_csv(exportdir+f"/train-loss-{x}-{y}.csv")
@@ -180,10 +180,10 @@ def main(path, epochs, exportdir, lr, weight_decay, rho, increment_factor, outpu
     epoch_loss_test = evaluate(svi, test_loader, use_cuda=False)
     logging.info("Chosen epoch error: %.4f" % epoch_loss_test)
     save_states(simulator_model, optimizer, exportdir, save_final=True)
-    write_to_file(output_file, x, y, epoch_loss_test)
+    write_to_file(args.output_file, x, y, epoch_loss_test)
     policy_acc = get_policy_accuracy(model=simulator_model)
-    write_to_file(accuracy_file, x, y, policy_acc)
-    if delete_states:
+    write_to_file(args.accuracy_file, x, y, policy_acc)
+    if args.delete_states:
         delete_redundant_states(exportdir, x, y)
 
 
@@ -195,13 +195,14 @@ if __name__ == "__main__":
     parser.add_argument("output_file", help="Output file to contain final test loss results")
     parser.add_argument("accuracy_file", help="Output file to contain policy accuracy")
     parser.add_argument("--lr", help="learning rate", type=float, default=0.01)
-    parser.add_argument("--weight_decay", help="weight decay (L2 penalty)", type=float, default=0.)
+    parser.add_argument("--weight_decay", help="weight decay (L2 penalty)", type=float, default=2.0)
     parser.add_argument("--rho", help="Correlation coefficient of S_0 components", type=float, default=None)
     parser.add_argument("--increment_factor", nargs='+', help="factor by which simulator increments s_t values",
                         type=int, default=None)
     parser.add_argument("--delete_states", help="delete redundant states from exportdir", type=bool, default=False)
     parser.add_argument("--phy_pol", help="use physicians' policy in model", type=bool, default=False)
     parser.add_argument("--learn_initial_state", help="learn initial state distribution", type=bool, default=False)
+    parser.add_argument('--lrd', help="learning rate decay", type=float, default=0.99996)
     args = parser.parse_args()
     if not os.path.exists(args.output_file):
         with open(args.output_file, "w") as f:
@@ -209,5 +210,4 @@ if __name__ == "__main__":
     if not os.path.exists(args.accuracy_file) and not args.phy_pol:
         with open(args.accuracy_file, "w") as f:
             f.write('x,y,policy accuracy' + os.linesep)
-    main(args.path, args.epochs, args.exportdir, args.lr, args.weight_decay, args.rho, args.increment_factor, args.output_file,
-         args.accuracy_file, args.delete_states, args.phy_pol, args.learn_initial_state)
+    main(args)
