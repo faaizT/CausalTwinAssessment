@@ -18,8 +18,6 @@ from simple_model.GenerateSimpleModelData import S_t, physicians_policy
 from simple_model.SimpleModel import cols, SimpleModel
 
 params = {'Epochs': [],
-          'mu_guide_1': [], 'mu_guide_2': [], 'sigma_guide_11': [],
-          'sigma_guide_12': [], 'sigma_guide_21': [], 'sigma_guide_22': [],
           'mu_model_1': [], 'mu_model_2': [], 'sigma_model_11': [],
           'sigma_model_12': [], 'sigma_model_21': [], 'sigma_model_22': []}
 
@@ -27,12 +25,6 @@ params = {'Epochs': [],
 def save_params(epoch):
     global params
     params['Epochs'].append(epoch)
-    params['mu_guide_1'].append(pyro.param("mu_guide")[0].item())
-    params['mu_guide_2'].append(pyro.param("mu_guide")[1].item())
-    params['sigma_guide_11'].append(pyro.param("sigma_guide")[0][0].item())
-    params['sigma_guide_12'].append(pyro.param("sigma_guide")[0][1].item())
-    params['sigma_guide_21'].append(pyro.param("sigma_guide")[1][0].item())
-    params['sigma_guide_22'].append(pyro.param("sigma_guide")[1][1].item())
     params['mu_model_1'].append(pyro.param("mu_model")[0].item())
     params['mu_model_2'].append(pyro.param("mu_model")[1].item())
     params['sigma_model_11'].append(pyro.param("sigma_model")[0][0].item())
