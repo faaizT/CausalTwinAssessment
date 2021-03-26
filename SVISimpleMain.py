@@ -139,7 +139,8 @@ def main(args):
     train_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=train_sampler)
     validation_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=valid_sampler)
     test_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=test_sampler)
-    adam_params = {"lr": args.lr, "weight_decay": args.weight_decay, "lrd": args.lrd}
+    adam_params = {"lr": args.lr, "weight_decay": args.weight_decay, "lrd": args.lrd, "clip_norm": args.clip_norm,
+                   "betas": (args.beta1, args.beta2)}
     optimizer = ClippedAdam(adam_params)
     svi = SVI(simulator_model.model, simulator_model.guide, optimizer, Trace_ELBO())
 
@@ -194,15 +195,18 @@ if __name__ == "__main__":
     parser.add_argument("exportdir", help="path to output directory")
     parser.add_argument("output_file", help="Output file to contain final test loss results")
     parser.add_argument("accuracy_file", help="Output file to contain policy accuracy")
-    parser.add_argument("--lr", help="learning rate", type=float, default=0.01)
+    parser.add_argument("--lr", help="learning rate", type=float, default=0.0001)
     parser.add_argument("--weight_decay", help="weight decay (L2 penalty)", type=float, default=2.0)
+    parser.add_argument('--lrd', help="learning rate decay", type=float, default=0.99996)
+    parser.add_argument('--clip-norm', help="Clip norm", type=float, default=10.0)
+    parser.add_argument('--beta1', type=float, default=0.96)
+    parser.add_argument('--beta2', type=float, default=0.999)
     parser.add_argument("--rho", help="Correlation coefficient of S_0 components", type=float, default=None)
     parser.add_argument("--increment_factor", nargs='+', help="factor by which simulator increments s_t values",
                         type=int, default=None)
     parser.add_argument("--delete_states", help="delete redundant states from exportdir", type=bool, default=False)
     parser.add_argument("--phy_pol", help="use physicians' policy in model", type=bool, default=False)
     parser.add_argument("--learn_initial_state", help="learn initial state distribution", type=bool, default=False)
-    parser.add_argument('--lrd', help="learning rate decay", type=float, default=0.99996)
     args = parser.parse_args()
     if not os.path.exists(args.output_file):
         with open(args.output_file, "w") as f:

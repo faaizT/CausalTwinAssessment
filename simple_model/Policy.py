@@ -2,6 +2,7 @@ import torch
 import torch as T
 import pyro.distributions as dist
 
+
 class Policy(T.nn.Module):
     def __init__(self, input_dim, output_dim, hidden_1_dim=8, hidden_2_dim=8):
         super(Policy, self).__init__()
@@ -46,5 +47,5 @@ class SNetwork(T.nn.Module):
         z = self.leakyRelu(self.hid2(z))
         z_loc = self.hid_to_loc(z)
         z_tril = self.hid_to_tril(z)
-        z_diag = torch.exp(self.hid_to_diag(z)) + 0.01
+        z_diag = torch.square(self.hid_to_diag(z)) + 0.01
         return z_loc, z_tril, z_diag
