@@ -28,6 +28,10 @@ class SimpleModel(nn.Module):
         else:
             self.rho = rho
         self.use_cuda = use_cuda
+        self.mu = nn.Parameter(torch.rand(2).float())
+        self.log_diag0 = nn.Parameter(torch.rand(1).float())
+        self.log_diag1 = nn.Parameter(torch.rand(1).float())
+        self.tril = nn.Parameter(torch.rand(1))
         if use_cuda:
             self.cuda()
 
@@ -35,13 +39,16 @@ class SimpleModel(nn.Module):
         pyro.module("simple_model", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
             if self.learn_initial_state:
-                mu = pyro.param("mu_model", torch.rand(2).float())
-                sigma = pyro.param("sigma_model", torch.tensor([[1, 0], [0, 1]]).float(),
-                                   constraint=constraints.positive_definite)
+                mu = self.mu
+                scale_tril = torch.stack([
+                    torch.exp(self.log_diag0), torch.tensor([0]),
+                    self.tril, torch.exp(self.log_diag1)
+                ], dim=-1).view(-1, 2, 2)
+                s_0 = pyro.sample("s_0", dist.MultivariateNormal(mu, scale_tril=scale_tril))
             else:
                 mu = torch.tensor((70, 110)).float()
                 sigma = torch.tensor([[20, self.rho*np.sqrt(40*20)], [self.rho*np.sqrt(40*20), 40]]).float()
-            s_0 = pyro.sample("s_0", dist.MultivariateNormal(mu, covariance_matrix=sigma))
+                s_0 = pyro.sample("s_0", dist.MultivariateNormal(mu, covariance_matrix=sigma))
             x_0 = pyro.sample("x_0", dist.Normal(s_0[:, 0], 1), obs=mini_batch[:, 0, cols.index('X_t')])
             a_0 = pyro.sample("a_0", dist.Categorical(logits=self.policy(s_0)), obs=mini_batch[:, 0, cols.index('A_t')])
             increment_factor = torch.stack(len(mini_batch)*[self.increment_factor])

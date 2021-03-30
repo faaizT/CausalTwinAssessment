@@ -8,7 +8,6 @@ import numpy as np
 import pyro
 import torch
 from pyro.infer import SVI, Trace_ELBO
-from pyro.optim import ClippedAdam
 import pyro.distributions as dist
 from max_likelihood.utils.ObservationalDataset import ObservationalDataset
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -19,18 +18,21 @@ from simple_model.SimpleModel import cols, SimpleModel
 
 params = {'Epochs': [],
           'mu_model_1': [], 'mu_model_2': [], 'sigma_model_11': [],
-          'sigma_model_12': [], 'sigma_model_21': [], 'sigma_model_22': []}
+          'sigma_model_12': [], 'sigma_model_22': []}
 
 
-def save_params(epoch):
+def save_params(model: SimpleModel, epoch: int):
     global params
-    params['Epochs'].append(epoch)
-    params['mu_model_1'].append(pyro.param("mu_model")[0].item())
-    params['mu_model_2'].append(pyro.param("mu_model")[1].item())
-    params['sigma_model_11'].append(pyro.param("sigma_model")[0][0].item())
-    params['sigma_model_12'].append(pyro.param("sigma_model")[0][1].item())
-    params['sigma_model_21'].append(pyro.param("sigma_model")[1][0].item())
-    params['sigma_model_22'].append(pyro.param("sigma_model")[1][1].item())
+    with torch.no_grad():
+        params['Epochs'].append(epoch)
+        params['mu_model_1'].append(model.mu[0].item())
+        params['mu_model_2'].append(model.mu[1].item())
+        sigma11 = torch.exp(model.log_diag0)[0].item() ** 2
+        sigma12 = torch.exp(model.log_diag0)[0].item()*model.tril[0].item()
+        sigma22 = torch.exp(model.log_diag1)[0].item() ** 2 + model.tril[0].item() ** 2
+        params['sigma_model_11'].append(sigma11)
+        params['sigma_model_12'].append(sigma12)
+        params['sigma_model_22'].append(sigma22)
 
 
 def write_to_file(file_name, x, y, loss):
@@ -66,7 +68,8 @@ def get_policy_accuracy(model: SimpleModel):
     return acc / len(df) * 100
 
 
-def train(svi, train_loader, use_cuda=False):
+def train(model: SimpleModel, optimiser, train_loader, use_cuda=False):
+    loss_fn = Trace_ELBO().differentiable_loss
     # initialize loss accumulator
     epoch_loss = 0.
     # do a training epoch over each mini-batch x returned
@@ -76,38 +79,43 @@ def train(svi, train_loader, use_cuda=False):
         if use_cuda:
             x = x.cuda()
         # do ELBO gradient and accumulate loss
-        epoch_loss += svi.step(x.float())
+        loss = loss_fn(model.model, model.guide, x.float())
+        loss.backward()
+        # take a step and zero the parameter gradients
+        optimiser.step()
+        optimiser.zero_grad()
+        epoch_loss += loss.detach().numpy()
     # return epoch loss
     normalizer_train = len(train_loader.dataset)
     total_epoch_loss_train = epoch_loss / normalizer_train
     return total_epoch_loss_train
 
 
-def evaluate(svi, test_loader, use_cuda=False):
+def evaluate(model: SimpleModel, test_loader, use_cuda=False):
+    loss_fn = Trace_ELBO().differentiable_loss
     # initialize loss accumulator
     test_loss = 0.
     # compute the loss over the entire test set
-    for x in test_loader:
-        # if on GPU put mini-batch into CUDA memory
-        if use_cuda:
-            x = x.cuda()
-        # compute ELBO estimate and accumulate loss
-        test_loss += svi.evaluate_loss(x.float())
+    with torch.no_grad():
+        for x in test_loader:
+            # if on GPU put mini-batch into CUDA memory
+            if use_cuda:
+                x = x.cuda()
+            # compute ELBO estimate and accumulate loss
+            test_loss += loss_fn(model.model, model.guide, x.float())
     normalizer_test = len(test_loader.dataset)
     total_epoch_loss_test = test_loss / normalizer_test
     return total_epoch_loss_test
 
 
-def save_states(model, optimizer, exportdir, iter_num=None, save_final=False):
+def save_states(model, exportdir, iter_num=None, save_final=False):
     logging.info("saving model and optimiser states to %s..." % exportdir)
     x, y = model.increment_factor.numpy()
     if save_final:
         torch.save(model.state_dict(), exportdir + f"/model-state-{x}-{y}-final")
-        optimizer.save(exportdir + f"/optimiser-state-{x}-{y}-final")
     else:
         torch.save(model.state_dict(), exportdir + f"/model-state-{x}-{y}-{iter_num}")
-        optimizer.save(exportdir + f"/optimiser-state-{x}-{y}-{iter_num}")
-    logging.info("done saving model and optimizer checkpoints to disk.")
+    logging.info("done saving model checkpoints to disk.")
 
 
 def main(args):
@@ -139,10 +147,8 @@ def main(args):
     train_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=train_sampler)
     validation_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=valid_sampler)
     test_loader = torch.utils.data.DataLoader(observational_dataset, batch_size=16, sampler=test_sampler)
-    adam_params = {"lr": args.lr, "weight_decay": args.weight_decay, "lrd": args.lrd, "clip_norm": args.clip_norm,
-                   "betas": (args.beta1, args.beta2)}
-    optimizer = ClippedAdam(adam_params)
-    svi = SVI(simulator_model.model, simulator_model.guide, optimizer, Trace_ELBO())
+    optimizer = torch.optim.Adam(simulator_model.parameters(), lr=args.lr, weight_decay=args.weight_decay,
+                                 betas=(args.beta1, args.beta2))
 
     NUM_EPOCHS = args.epochs
     train_loss = {'Epochs': [], 'Training Loss': []}
@@ -151,36 +157,34 @@ def main(args):
     # training loop
     i = 0
     for epoch in range(NUM_EPOCHS):
-        epoch_loss_train = train(svi, train_loader, use_cuda=False)
+        epoch_loss_train = train(simulator_model, optimizer, train_loader, use_cuda=False)
         train_loss['Epochs'].append(epoch)
         train_loss['Training Loss'].append(epoch_loss_train)
         logging.info("[epoch %03d]  average training loss: %.4f" % (epoch, epoch_loss_train))
         if (epoch+1) % SAVE_N_TEST_FREQUENCY == 0:
             # report test diagnostics
-            epoch_loss_val = evaluate(svi, validation_loader, use_cuda=False)
+            epoch_loss_val = evaluate(simulator_model, validation_loader, use_cuda=False)
             validation_loss['Epochs'].append(epoch)
             validation_loss['Test Loss'].append(epoch_loss_val)
             logging.info("[epoch %03d] average validation loss: %.4f" % (epoch, epoch_loss_val))
             if args.learn_initial_state:
-                save_params(epoch)
+                save_params(simulator_model, epoch)
                 pd.DataFrame(data=params).to_csv(exportdir + f"/initial-state-params-{x}-{y}.csv")
             pd.DataFrame(data=train_loss).to_csv(exportdir+f"/train-loss-{x}-{y}.csv")
             pd.DataFrame(data=validation_loss).to_csv(exportdir+f"/validation-loss-{x}-{y}.csv")
-            save_states(simulator_model,optimizer, exportdir, iter_num=i)
+            save_states(simulator_model, exportdir, iter_num=i)
             i += 1
     pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss-{x}-{y}.csv")
     pd.DataFrame(data=validation_loss).to_csv(exportdir + f"/validation-loss-{x}-{y}.csv")
-    epoch_loss_test = evaluate(svi, test_loader, use_cuda=False)
+    epoch_loss_test = evaluate(simulator_model, test_loader, use_cuda=False)
     logging.info("last epoch error: %.4f" % epoch_loss_test)
     min_val, idx = min((val, idx) for (idx, val) in enumerate(validation_loss['Test Loss']))
     logging.info(f"Index chosen: {idx}")
     simulator_model.load_state_dict(torch.load(exportdir + f"/model-state-{x}-{y}-{idx}"))
-    optimizer.load(exportdir + f"/optimiser-state-{x}-{y}-{idx}")
     simulator_model.eval()
-    svi = SVI(simulator_model.model, simulator_model.guide, optimizer, Trace_ELBO())
-    epoch_loss_test = evaluate(svi, test_loader, use_cuda=False)
+    epoch_loss_test = evaluate(simulator_model, test_loader, use_cuda=False)
     logging.info("Chosen epoch error: %.4f" % epoch_loss_test)
-    save_states(simulator_model, optimizer, exportdir, save_final=True)
+    save_states(simulator_model, exportdir, save_final=True)
     write_to_file(args.output_file, x, y, epoch_loss_test)
     policy_acc = get_policy_accuracy(model=simulator_model)
     write_to_file(args.accuracy_file, x, y, policy_acc)
@@ -195,10 +199,8 @@ if __name__ == "__main__":
     parser.add_argument("exportdir", help="path to output directory")
     parser.add_argument("output_file", help="Output file to contain final test loss results")
     parser.add_argument("accuracy_file", help="Output file to contain policy accuracy")
-    parser.add_argument("--lr", help="learning rate", type=float, default=0.0001)
+    parser.add_argument("--lr", help="learning rate", type=float, default=0.001)
     parser.add_argument("--weight_decay", help="weight decay (L2 penalty)", type=float, default=2.0)
-    parser.add_argument('--lrd', help="learning rate decay", type=float, default=0.99996)
-    parser.add_argument('--clip-norm', help="Clip norm", type=float, default=10.0)
     parser.add_argument('--beta1', type=float, default=0.96)
     parser.add_argument('--beta2', type=float, default=0.999)
     parser.add_argument("--rho", help="Correlation coefficient of S_0 components", type=float, default=None)
