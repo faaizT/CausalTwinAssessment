@@ -102,7 +102,7 @@ def evaluate(model: SimpleModel, test_loader, use_cuda=False):
             if use_cuda:
                 x = x.cuda()
             # compute ELBO estimate and accumulate loss
-            test_loss += loss_fn(model.model, model.guide, x.float())
+            test_loss += loss_fn(model.model, model.guide, x.float()).numpy()
     normalizer_test = len(test_loader.dataset)
     total_epoch_loss_test = test_loss / normalizer_test
     return total_epoch_loss_test
