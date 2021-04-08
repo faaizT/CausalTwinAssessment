@@ -5,6 +5,8 @@ import torch
 from torch import nn
 from torch.distributions import constraints
 from sepsisSimDiabetes.State import State
+from sepsisSimDiabetes.Action import Action
+from sepsisSimDiabetes.MDP import MDP
 from .utils.Distributions import CategoricalVals
 from simple_model.Policy import Policy
 from .utils.Networks import Combiner
@@ -23,12 +25,18 @@ cols = [
 
 class GumbelMaxModel(nn.Module):
     def __init__(
-        self, use_cuda=False, st_dim=8, n_act=8, rnn_dim=30, rnn_dropout_rate=0.0
+        self,
+        use_cuda=False,
+        st_vec_dim=8,
+        n_st=1440,
+        n_act=8,
+        rnn_dim=30,
+        rnn_dropout_rate=0.0,
     ):
         super().__init__()
         self.use_cuda = use_cuda
         self.rnn = nn.RNN(
-            input_size=st_dim,
+            input_size=st_vec_dim,
             hidden_size=rnn_dim,
             nonlinearity="relu",
             batch_first=True,
@@ -36,43 +44,73 @@ class GumbelMaxModel(nn.Module):
             num_layers=1,
             dropout=rnn_dropout_rate,
         )
-        self.combiner = Combiner(z_dim=st_dim, rnn_dim=rnn_dim, out_dim=1440)
+        self.combiner = Combiner(z_dim=st_vec_dim, rnn_dim=rnn_dim, out_dim=n_st)
         self.h_0 = nn.Parameter(torch.zeros(1, 1, rnn_dim))
         self.policy = Policy(
-            input_dim=st_dim, hidden_1_dim=20, hidden_2_dim=20, output_dim=n_act
+            input_dim=st_vec_dim, hidden_1_dim=20, hidden_2_dim=20, output_dim=n_act
         )
-        self.s0_probs = nn.Parameter(torch.zeros(1440))
-        self.s_q_0 = nn.Parameter(torch.zeros(st_dim))
-        self.s0_probs_guide = nn.Parameter(torch.zeros(1440))
+        self.s0_probs = nn.Parameter(torch.zeros(n_st))
+        self.s0_probs_guide = nn.Parameter(torch.zeros(n_st))
         if use_cuda:
             self.cuda()
+
+    def emission(self, mini_batch, state, t, i):
+        hr_probs = torch.ones(3) * 0.05
+        hr_probs[state.hr_state] = 0.9
+        xt_hr = pyro.sample(
+            f"x{t}_hr_{i}",
+            dist.Categorical(probs=hr_probs),
+            obs=mini_batch[i, t, cols.index("hr_state")],
+        )
+        sysbp_probs = torch.ones(3) * 0.05
+        sysbp_probs[state.sysbp_state] = 0.9
+        xt_sysbp = pyro.sample(
+            f"x{t}_sysbp_{i}",
+            dist.Categorical(probs=sysbp_probs),
+            obs=mini_batch[i, t, cols.index("sysbp_state")],
+        )
+        percoxyg_probs = torch.ones(2) * 0.05
+        percoxyg_probs[state.percoxyg_state] = 0.95
+        xt_percoxyg = pyro.sample(
+            f"x{t}_percoxyg_{i}",
+            dist.Categorical(probs=percoxyg_probs),
+            obs=mini_batch[i, t, cols.index("percoxyg_state")],
+        )
+        glucose_probs = torch.ones(5) * 0.05
+        glucose_probs[state.glucose_state] = 0.8
+        xt_glucose = pyro.sample(
+            f"x{t}_glucose_{i}",
+            dist.Categorical(probs=glucose_probs),
+            obs=mini_batch[i, t, cols.index("glucose_state")],
+        )
 
     def model(self, mini_batch, mini_batch_reversed):
         T_max = mini_batch.size(1)
         pyro.module("gumbel_max", self)
         for i in pyro.plate("s_minibatch", len(mini_batch)):
+            st = pyro.sample(f"s0_{i}", dist.Categorical(logits=self.s0_probs))
+            mdp = MDP(init_state_idx=int(st.item()), init_state_idx_type="full")
+            state = State(state_idx=int(st.item()), idx_type="full")
+            st_vec = state.get_full_state_vector()
             for t in range(T_max):
+                self.emission(mini_batch, state, t, i)
                 # TODO: FIX THIS
-                if (mini_batch[i, t, :] == -1).sum() > 1:
+                if (mini_batch[i, t, :] == -1).sum() > 0:
                     break
-                st = pyro.sample(f"s{t}_{i}", dist.Categorical(logits=self.s0_probs))
-                state = State(state_idx=int(st.item()), idx_type="full")
-                st_vec = state.get_full_state_vector()
-                if mini_batch[i, t, cols.index("A_t")] != -1:
-                    a_0 = pyro.sample(
-                        f"a{t}_{i}",
-                        dist.Categorical(
-                            logits=self.policy(torch.tensor(st_vec).float())
-                        ),
-                        obs=mini_batch[i, t, cols.index("A_t")],
-                    )
-                probs = torch.ones(3) * 0.05
-                probs[st_vec[0]] = 0.9
-                x_0_hr = pyro.sample(
-                    f"x{t}_hr_{i}",
-                    dist.Categorical(probs=probs),
-                    obs=mini_batch[i, t, cols.index("hr_state")],
+                at = pyro.sample(
+                    f"a{t}_{i}",
+                    dist.Categorical(logits=self.policy(torch.tensor(st_vec).float())),
+                    obs=mini_batch[i, t, cols.index("A_t")],
                 )
+                action = Action(action_idx=at.item())
+                if t < T_max - 1:
+                    mdp.transition(action)
+                    next_state_id = mdp.state.get_state_idx(idx_type="full")
+                    st_probs = torch.zeros(1440)
+                    st_probs[next_state_id] = 1.0
+                    st = pyro.sample(f"s{t+1}_{i}", dist.Categorical(probs=st_probs))
+                    state = State(state_idx=int(st.item()), idx_type="full")
+                    st_vec = state.get_full_state_vector()
 
     def guide(self, mini_batch, mini_batch_reversed):
         T_max = mini_batch.size(1)
