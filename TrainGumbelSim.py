@@ -1,14 +1,46 @@
+import re
+import os
 import argparse
 import logging
 import numpy as np
 import pandas as pd
 import torch
+import wandb
 import pyro
+import pyro.distributions as dist
 from gumbel_max_sim.GumbelMaxModel import GumbelMaxModel, cols
 from max_likelihood.utils.ObservationalDataset import ObservationalDataset
 from pyro.infer import SVI, Trace_ELBO
 from torch.utils.data.sampler import SubsetRandomSampler
 from pyro.optim import ClippedAdam
+
+
+def log_initial_distribution(model, epoch):
+    s0_probs = model.s0_probs.detach()
+    s0 = dist.Categorical(logits=torch.stack([s0_probs] * 1000)).sample()
+    table = wandb.Table(data=s0.detach().numpy().reshape(1000, 1), columns=["s0"])
+    wandb.log(
+        {
+            "epoch": epoch,
+            "s0_histogram": wandb.plot.histogram(table, "s0", title="S0 distribution"),
+        }
+    )
+
+
+def delete_redundant_states(dir):
+    pattern = f"(model|optimiser)-state-[0-9]+"
+    for f in os.listdir(dir):
+        if re.search(pattern, f):
+            os.remove(os.path.join(dir, f))
+
+
+def save_states(model, exportdir, iter_num=None, save_final=False):
+    logging.info("saving model and optimiser states to %s..." % exportdir)
+    if save_final:
+        torch.save(model.state_dict(), exportdir + f"/model-state-final")
+    else:
+        torch.save(model.state_dict(), exportdir + f"/model-state-{iter_num}")
+    logging.info("done saving model checkpoints to disk.")
 
 
 def train(svi, train_loader, use_cuda=False):
@@ -48,7 +80,7 @@ def evaluate(svi, test_loader, use_cuda=False):
 
 
 def main(args):
-    gumbel_model = GumbelMaxModel()
+    gumbel_model = GumbelMaxModel(use_rnn=False)
     exportdir = args.exportdir
     log_file_name = f"{exportdir}/gumbel_max_model.log"
     logging.basicConfig(
@@ -102,9 +134,15 @@ def main(args):
     # training loop
     i = 0
     for epoch in range(NUM_EPOCHS):
+        log_initial_distribution(gumbel_model, epoch)
         epoch_loss_train = train(svi, train_loader, use_cuda=False)
         train_loss["Epochs"].append(epoch)
         train_loss["Training Loss"].append(epoch_loss_train)
+        wandb.log({"epoch": epoch, "Training Loss": epoch_loss_train})
+        logging.info(
+            "initial state distribution: %.4f"
+            % gumbel_model.s0_probs.detach().numpy().sum()
+        )
         logging.info(
             "[epoch %03d]  average training loss: %.4f" % (epoch, epoch_loss_train)
         )
@@ -113,37 +151,32 @@ def main(args):
             epoch_loss_val = evaluate(svi, validation_loader, use_cuda=False)
             validation_loss["Epochs"].append(epoch)
             validation_loss["Test Loss"].append(epoch_loss_val)
+            wandb.log({"epoch": epoch, "Test Loss": epoch_loss_val})
             logging.info(
                 "[epoch %03d] average validation loss: %.4f" % (epoch, epoch_loss_val)
             )
-            # if args.learn_initial_state:
-            #     save_params(gumbel_model, epoch)
-            #     pd.DataFrame(data=params).to_csv(
-            #         exportdir + f"/initial-state-params-{x}-{y}.csv"
-            #     )
-            # pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss-{x}-{y}.csv")
-            # pd.DataFrame(data=validation_loss).to_csv(
-            #     exportdir + f"/validation-loss-{x}-{y}.csv"
-            # )
-            # save_states(simulator_model, exportdir, iter_num=i)
-            # i += 1
+            pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss.csv")
+            pd.DataFrame(data=validation_loss).to_csv(
+                exportdir + f"/validation-loss.csv"
+            )
+            save_states(gumbel_model, exportdir, iter_num=i)
+            log_initial_distribution(gumbel_model, epoch)
+            i += 1
     pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss.csv")
     pd.DataFrame(data=validation_loss).to_csv(exportdir + f"/validation-loss.csv")
     epoch_loss_test = evaluate(svi, validation_loader, use_cuda=False)
     logging.info("last epoch error: %.4f" % epoch_loss_test)
-    # min_val, idx = min(
-    #     (val, idx) for (idx, val) in enumerate(validation_loss["Test Loss"])
-    # )
-    # logging.info(f"Index chosen: {idx}")
-    # simulator_model.load_state_dict(
-    #     torch.load(exportdir + f"/model-state-{x}-{y}-{idx}")
-    # )
-    # simulator_model.eval()
-    # epoch_loss_test = evaluate(simulator_model, test_loader, use_cuda=False)
-    # logging.info("Chosen epoch error: %.4f" % epoch_loss_test)
-    # save_states(simulator_model, exportdir, save_final=True)
-    # if args.delete_states:
-    #     delete_redundant_states(exportdir, x, y)
+    min_val, idx = min(
+        (val, idx) for (idx, val) in enumerate(validation_loss["Test Loss"])
+    )
+    logging.info(f"Index chosen: {idx}")
+    gumbel_model.load_state_dict(torch.load(exportdir + f"/model-state-{idx}"))
+    gumbel_model.eval()
+    epoch_loss_test = evaluate(svi, test_loader, use_cuda=False)
+    logging.info("Chosen epoch error: %.4f" % epoch_loss_test)
+    save_states(gumbel_model, exportdir, save_final=True)
+    if args.delete_states:
+        delete_redundant_states(exportdir)
 
 
 if __name__ == "__main__":
@@ -153,9 +186,9 @@ if __name__ == "__main__":
         "epochs", help="maximum number of epochs to train for", type=int, default=100
     )
     parser.add_argument("exportdir", help="path to output directory")
-    parser.add_argument("--lr", help="learning rate", type=float, default=0.0001)
+    parser.add_argument("--lr", help="learning rate", type=float, default=0.001)
     parser.add_argument(
-        "--weight_decay", help="weight decay (L2 penalty)", type=float, default=2.0
+        "--weight_decay", help="weight decay (L2 penalty)", type=float, default=0.0
     )
     parser.add_argument(
         "--lrd", help="learning rate decay", type=float, default=0.99996
@@ -170,4 +203,10 @@ if __name__ == "__main__":
         default=False,
     )
     args = parser.parse_args()
+    wandb.init(project="SimulatorValidation", name="gumbel-max-scm")
+    wandb.config.lr = args.lr
+    wandb.config.weight_decay = args.weight_decay
+    wandb.config.lrd = args.lrd
+    wandb.config.clip_norm = args.clip_norm
+    wandb.config.betas = (args.beta1, args.beta2)
     main(args)

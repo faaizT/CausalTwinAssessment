@@ -9,7 +9,7 @@ from sepsisSimDiabetes.Action import Action
 from sepsisSimDiabetes.MDP import MDP
 from .utils.Distributions import CategoricalVals
 from simple_model.Policy import Policy
-from .utils.Networks import Combiner
+from .utils.Networks import Combiner, Combiner_without_rnn
 
 cols = [
     "hr_state",
@@ -30,21 +30,28 @@ class GumbelMaxModel(nn.Module):
         st_vec_dim=8,
         n_st=1440,
         n_act=8,
-        rnn_dim=30,
+        use_rnn=False,
+        rnn_dim=400,
         rnn_dropout_rate=0.0,
     ):
         super().__init__()
         self.use_cuda = use_cuda
-        self.rnn = nn.RNN(
-            input_size=st_vec_dim,
-            hidden_size=rnn_dim,
-            nonlinearity="relu",
-            batch_first=True,
-            bidirectional=False,
-            num_layers=1,
-            dropout=rnn_dropout_rate,
-        )
-        self.combiner = Combiner(z_dim=st_vec_dim, rnn_dim=rnn_dim, out_dim=n_st)
+        self.use_rnn = use_rnn
+        if use_rnn:
+            self.rnn = nn.RNN(
+                input_size=st_vec_dim,
+                hidden_size=rnn_dim,
+                nonlinearity="relu",
+                batch_first=True,
+                bidirectional=False,
+                num_layers=1,
+                dropout=rnn_dropout_rate,
+            )
+            self.combiner = Combiner(z_dim=st_vec_dim, rnn_dim=rnn_dim, out_dim=n_st)
+        else:
+            self.combiner = Combiner_without_rnn(
+                z_dim=st_vec_dim, hidden_dim=400, out_dim=n_st
+            )
         self.h_0 = nn.Parameter(torch.zeros(1, 1, rnn_dim))
         self.policy = Policy(
             input_dim=st_vec_dim, hidden_1_dim=20, hidden_2_dim=20, output_dim=n_act
@@ -115,7 +122,11 @@ class GumbelMaxModel(nn.Module):
     def guide(self, mini_batch, mini_batch_reversed):
         T_max = mini_batch.size(1)
         h_0_contig = self.h_0
-        s_prev_id = dist.Categorical(logits=self.s0_probs_guide).sample()
+        s_prev_id = pyro.sample(
+            "s_q_0",
+            dist.Categorical(logits=self.s0_probs_guide),
+            infer={"is_auxiliary": True},
+        )
         s_prev = State(
             state_idx=s_prev_id.item(), idx_type="full"
         ).get_full_state_vector()
@@ -124,18 +135,25 @@ class GumbelMaxModel(nn.Module):
             for t in range(T_max):
                 if (mini_batch_reversed[i, t, :] == -1).sum() < 8:
                     break
-            rnn_output, _ = self.rnn(
-                (mini_batch_reversed[i, t:, :]).reshape((1, T_max - t, 8)), h_0_contig
-            )
-            rnn_output = torch.flip(rnn_output, [1])
+            if self.use_rnn:
+                rnn_output, _ = self.rnn(
+                    (mini_batch_reversed[i, t:, :]).reshape((1, T_max - t, 8)),
+                    h_0_contig,
+                )
+                rnn_output = torch.flip(rnn_output, [1])
             for t in range(T_max):
                 # TODO: FIX THIS
                 if (mini_batch[i, t, :] == -1).sum() > 1:
                     break
-                logits = self.combiner(
-                    torch.tensor(s_prev).reshape(1, 8).float(),
-                    rnn_output[0, t, :].reshape(1, 30),
-                )
+                if self.use_rnn:
+                    logits = self.combiner(
+                        torch.tensor(s_prev).float(),
+                        rnn_output[0, t, :],
+                    )
+                else:
+                    logits = self.combiner(
+                        torch.tensor(s_prev).float(),
+                    )
                 st = pyro.sample(f"s{t}_{i}", dist.Categorical(logits=logits))
                 s_prev = State(
                     state_idx=st.item(), idx_type="full"
