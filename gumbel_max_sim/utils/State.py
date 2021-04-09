@@ -1,6 +1,8 @@
 import torch
+from sepsisSimDiabetes.State import State
 
-class State(object):
+
+class State(State):
     NUM_OBS_STATES = 720
     NUM_HID_STATES = 2  # Binary value of diabetes
     NUM_PROJ_OBS_STATES = int(720 / 5)  # Marginalizing over glucose

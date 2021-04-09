@@ -15,18 +15,6 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from pyro.optim import ClippedAdam
 
 
-def log_initial_distribution(model, epoch):
-    s0_probs = model.s0_probs.detach()
-    s0 = dist.Categorical(logits=torch.stack([s0_probs] * 1000)).sample()
-    table = wandb.Table(data=s0.cpu().detach().numpy().reshape(1000, 1), columns=["s0"])
-    wandb.log(
-        {
-            "epoch": epoch,
-            "s0_histogram": wandb.plot.histogram(table, "s0", title="S0 distribution"),
-        }
-    )
-
-
 def delete_redundant_states(dir):
     pattern = f"(model|optimiser)-state-[0-9]+"
     for f in os.listdir(dir):
@@ -158,7 +146,6 @@ def main(args):
                 exportdir + f"/validation-loss.csv"
             )
             save_states(gumbel_model, exportdir, iter_num=i)
-            log_initial_distribution(gumbel_model, epoch)
             i += 1
     pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss.csv")
     pd.DataFrame(data=validation_loss).to_csv(exportdir + f"/validation-loss.csv")
@@ -178,28 +165,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # from gumbel_max_sim.utils.State import State
-    # from gumbel_max_sim.utils.Action import Action
-    # from gumbel_max_sim.utils.MDP import MdpPyro
-    # import torch
-    # st = torch.ones(16, 1)
-    # state = State(state_idx=st)
-    # mdp = MdpPyro(init_state_idx=st)
-    # probs = mdp.transition_vent_on()
-    # y = probs.gather(1, state.hr_state.reshape(16, 1, 1).to(dtype=torch.int64))
-    # print(y.size())
-    # print(mdp.transition_vent_on().size())
-    # sysbp, gluc = mdp.transition_vaso_on()
-    # print(sysbp.size())
-    # print(gluc.size())
-    # a = torch.ones(16)
-    # Ac = Action(action_idx=a)
-    # x1, x2, x3, x4 = mdp.transition_probs(Ac)
-    # print(x1.size())
-    # print(x2.size())
-    # print(x3.size())
-    # print(x4.size())
-
     parser = argparse.ArgumentParser()
     parser.add_argument("path", help="path to observational data")
     parser.add_argument(

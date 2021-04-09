@@ -1,6 +1,7 @@
+from sepsisSimDiabetes.Action import Action
 import torch
 
-class Action(object):
+class Action(Action):
     NUM_ACTIONS_TOTAL = 8
     def __init__(self, action_idx=None, selected_actions=None):
         assert (selected_actions is not None and action_idx is None) \
