@@ -30,7 +30,7 @@ class GumbelMaxModel(nn.Module):
         st_vec_dim=8,
         n_act=8,
         use_rnn=False,
-        rnn_dim=400,
+        rnn_dim=20,
         rnn_dropout_rate=0.0,
     ):
         super().__init__()
@@ -46,6 +46,16 @@ class GumbelMaxModel(nn.Module):
         self.s0_sysbp = Net(input_dim=1, output_dim=3)
         self.s0_glucose = Net(input_dim=1, output_dim=5)
         self.s0_percoxyg = Net(input_dim=1, output_dim=2)
+        if use_rnn:
+            self.rnn = nn.RNN(
+                input_size=st_vec_dim,
+                hidden_size=rnn_dim,
+                nonlinearity="relu",
+                batch_first=True,
+                bidirectional=False,
+                num_layers=1,
+                dropout=rnn_dropout_rate,
+            )
         self.s0_diab_guide = Net(input_dim=14, output_dim=2) 
         self.s0_diab_guide.to(device)
         if use_cuda:
