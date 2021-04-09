@@ -1,31 +1,16 @@
-'''
-Action:             0                1                  2 ...
-hr_probs:       [       ]         [         ]       [         ]
-sysbp_probs:    
- .
- .
- .
-
-
-
-'''
-
-
-
-
-
 from gumbel_max_sim.utils.State import State
-from sepsisSimDiabetes.Action import Action
+from gumbel_max_sim.utils.Action import Action
 from sepsisSimDiabetes.MDP import MDP
+from gumbel_max_sim.GumberMaxModel import cols
 import torch
+import pyro
+import pyro.distributions as dist
 
 
 class MdpPyro(MDP):
     def __init__(self, init_state_idx=None, init_state_categ=None, init_state_idx_type="full"):
         self.state = State(state_idx=init_state_idx, state_categs=init_state_categ)
         self.batch_size = self.state.hr_state.size(0)
-
-    # def pyro_transition()
 
     def transition_antibiotics_on(self):
         """
@@ -160,10 +145,27 @@ class MdpPyro(MDP):
         sysbp_probs = torch.matmul(sysbp_probs, vaso*sysbp_vaso_on + (1-vaso)*sysbp_vaso_off)
         vaso = torch.column_stack([action.vasopressors]*25).reshape(self.batch_size,5,5)
         glucose_probs = vaso*glucose_vaso_on + (1-vaso)*glucose_vaso_off
-        hr_probs = hr_probs.gather(1, self.state.hr_state.reshape(self.batch_size, 1, 1).to(dtype=torch.int64))
-        sysbp_probs = sysbp_probs.gather(1, self.state.sysbp_state.reshape(self.batch_size, 1, 1).to(dtype=torch.int64))
-        glucose_probs = glucose_probs.gather(1, self.state.glucose_state.reshape(self.batch_size, 1, 1).to(dtype=torch.int64))
-        percoxyg_probs = percoxyg_probs.gather(1, self.state.percoxyg_state.reshape(self.batch_size, 1, 1).to(dtype=torch.int64))
+        hr_idx = torch.column_stack([self.state.hr_state]*3).reshape((self.batch_size,1,3))
+        hr_probs = hr_probs.gather(1, hr_idx.to(dtype=torch.int64)).reshape((self.batch_size, 3))
+        sysbp_idx = torch.column_stack([self.state.sysbp_state]*3).reshape((self.batch_size,1,3))
+        sysbp_probs = sysbp_probs.gather(1, sysbp_idx.to(dtype=torch.int64)).reshape((self.batch_size, 3))
+        glucose_idx = torch.column_stack([self.state.glucose_state]*5).reshape((self.batch_size,1,5))
+        glucose_probs = glucose_probs.gather(1, glucose_idx.to(dtype=torch.int64)).reshape((self.batch_size, 5))
+        percoxyg_idx = torch.column_stack([self.state.percoxyg_state]*2).reshape((self.batch_size,1,2))
+        percoxyg_probs = percoxyg_probs.gather(1, percoxyg_idx.to(dtype=torch.int64)).reshape((self.batch_size, 2))
         return hr_probs, sysbp_probs, glucose_probs, percoxyg_probs
 
+    def transition(self, action, minibatch, t):
+        hr_probs, sysbp_probs, glucose_probs, percoxyg_probs = self.transition_probs(action)
+        hr_state = pyro.sample(f"x{t}_hr", dist.Categorical(probs=hr_probs), obs=mini_batch[:, t, cols.index("hr_state")])
+        self.state.hr_state = hr_state
+        sysbp_state = pyro.sample(f"x{t}_sysbp", dist.Categorical(probs=sysbp_probs), obs=mini_batch[:, t, cols.index("sysbp_state")])
+        self.state.sysbp_state = sysbp_state
+        glucose_state = pyro.sample(f"x{t}_glucose", dist.Categorical(probs=glucose_probs), obs=mini_batch[:, t, cols.index("glucose_state")])
+        self.state.glucose_state = glucose_state
+        percoxyg_state = pyro.sample(f"x{t}_percoxyg", dist.Categorical(probs=percoxyg_probs), obs=mini_batch[:, t, cols.index("percoxyg_state")])
+        self.state.percoxyg_state = percoxyg_state
+        self.state.antibiotic_state = action.antibiotic
+        self.state.vent_state = action.ventilation
+        self.state.vaso_state = action.vasopressors
 
