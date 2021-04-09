@@ -1,7 +1,7 @@
 from gumbel_max_sim.utils.State import State
 from gumbel_max_sim.utils.Action import Action
 from sepsisSimDiabetes.MDP import MDP
-from gumbel_max_sim.GumberMaxModel import cols
+from gumbel_max_sim.GumbelMaxModel import cols
 import torch
 import pyro
 import pyro.distributions as dist
@@ -155,7 +155,7 @@ class MdpPyro(MDP):
         percoxyg_probs = percoxyg_probs.gather(1, percoxyg_idx.to(dtype=torch.int64)).reshape((self.batch_size, 2))
         return hr_probs, sysbp_probs, glucose_probs, percoxyg_probs
 
-    def transition(self, action, minibatch, t):
+    def transition(self, action, mini_batch, t):
         hr_probs, sysbp_probs, glucose_probs, percoxyg_probs = self.transition_probs(action)
         hr_state = pyro.sample(f"x{t}_hr", dist.Categorical(probs=hr_probs), obs=mini_batch[:, t, cols.index("hr_state")])
         self.state.hr_state = hr_state

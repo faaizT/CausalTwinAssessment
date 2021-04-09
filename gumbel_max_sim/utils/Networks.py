@@ -60,3 +60,18 @@ class Combiner_without_rnn(T.nn.Module):
         # use the combined hidden state to compute the mean used to sample z_t
         output = self.lin_hidden_to_logits(h_combined)
         return output
+
+class Net(T.nn.Module):
+
+    def __init__(self, input_dim, output_dim, hidden_dim=8, use_cuda=False):
+        super().__init__()
+        self.lin1 = T.nn.Linear(input_dim, hidden_dim)
+        self.lin2 = T.nn.Linear(hidden_dim, output_dim)
+        self.leakyRelu = T.nn.LeakyReLU()
+        if use_cuda:
+            self.cuda()
+
+    def forward(self, z):
+        z = self.leakyRelu(self.lin1(z))
+        output = self.lin2(z)
+        return output

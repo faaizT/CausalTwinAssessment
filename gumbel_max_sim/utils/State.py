@@ -6,12 +6,12 @@ class State(object):
     NUM_PROJ_OBS_STATES = int(720 / 5)  # Marginalizing over glucose
     NUM_FULL_STATES = int(NUM_OBS_STATES * NUM_HID_STATES)
 
-    def __init__(self, state_idx=None, state_categs=None, diabetic_idx=None):
+    def __init__(self, state_idx=None, state_categs=None):
         assert state_idx is not None or state_categs is not None
         if state_idx is not None:
             self.set_state_by_idx(state_idx)
         else:
-            assert state_categs.size(1) == 7
+            assert state_categs.size(1) == 8
             self.hr_state = state_categs[:,0]
             self.sysbp_state = state_categs[:,1]
             self.percoxyg_state = state_categs[:,2]
@@ -19,7 +19,7 @@ class State(object):
             self.antibiotic_state = state_categs[:,4]
             self.vaso_state = state_categs[:,5]
             self.vent_state = state_categs[:,6]
-            self.diabetic_idx = diabetic_idx
+            self.diabetic_idx = state_categs[:,7]
 
     def set_state_by_idx(self, state_idx):
         mod_idx = state_idx
@@ -67,3 +67,15 @@ class State(object):
             self.vent_state,))
 
         return (state_categs*categ_num).sum(axis=1)
+
+    def get_state_tensor(self):
+        return torch.column_stack((
+            self.hr_state,
+            self.sysbp_state,
+            self.percoxyg_state,
+            self.glucose_state,
+            self.antibiotic_state,
+            self.vaso_state,
+            self.vent_state,
+            self.diabetic_idx,
+        )).float()

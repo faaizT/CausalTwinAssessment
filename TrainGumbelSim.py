@@ -8,7 +8,7 @@ import torch
 import wandb
 import pyro
 import pyro.distributions as dist
-from gumbel_max_sim.GumbelMaxModel import GumbelMaxModel, cols
+from gumbel_max_sim.GumbelMaxModel2 import GumbelMaxModel, cols
 from max_likelihood.utils.ObservationalDataset import ObservationalDataset
 from pyro.infer import SVI, Trace_ELBO
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -82,7 +82,7 @@ def evaluate(svi, test_loader, use_cuda=False):
 def main(args):
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
-    gumbel_model = GumbelMaxModel(use_rnn=True, use_cuda=use_cuda)
+    gumbel_model = GumbelMaxModel(use_rnn=False, use_cuda=use_cuda)
     gumbel_model.to(device)
     exportdir = args.exportdir
     log_file_name = f"{exportdir}/gumbel_max_model.log"
@@ -178,55 +178,55 @@ def main(args):
 
 
 if __name__ == "__main__":
-    from gumbel_max_sim.utils.State import State
-    from gumbel_max_sim.utils.Action import Action
-    from gumbel_max_sim.utils.MDP import MdpPyro
-    import torch
-    st = torch.ones(16, 1)
-    state = State(state_idx=st)
-    mdp = MdpPyro(init_state_idx=st)
-    probs = mdp.transition_vent_on()
-    y = probs.gather(1, state.hr_state.reshape(16, 1, 1).to(dtype=torch.int64))
-    print(y.size())
-    print(mdp.transition_vent_on().size())
-    sysbp, gluc = mdp.transition_vaso_on()
-    print(sysbp.size())
-    print(gluc.size())
-    a = torch.ones(16)
-    Ac = Action(action_idx=a)
-    x1, x2, x3, x4 = mdp.transition_probs(Ac)
-    print(x1.size())
-    print(x2.size())
-    print(x3.size())
-    print(x4.size())
+    # from gumbel_max_sim.utils.State import State
+    # from gumbel_max_sim.utils.Action import Action
+    # from gumbel_max_sim.utils.MDP import MdpPyro
+    # import torch
+    # st = torch.ones(16, 1)
+    # state = State(state_idx=st)
+    # mdp = MdpPyro(init_state_idx=st)
+    # probs = mdp.transition_vent_on()
+    # y = probs.gather(1, state.hr_state.reshape(16, 1, 1).to(dtype=torch.int64))
+    # print(y.size())
+    # print(mdp.transition_vent_on().size())
+    # sysbp, gluc = mdp.transition_vaso_on()
+    # print(sysbp.size())
+    # print(gluc.size())
+    # a = torch.ones(16)
+    # Ac = Action(action_idx=a)
+    # x1, x2, x3, x4 = mdp.transition_probs(Ac)
+    # print(x1.size())
+    # print(x2.size())
+    # print(x3.size())
+    # print(x4.size())
 
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("path", help="path to observational data")
-    # parser.add_argument(
-    #     "epochs", help="maximum number of epochs to train for", type=int, default=100
-    # )
-    # parser.add_argument("exportdir", help="path to output directory")
-    # parser.add_argument("--lr", help="learning rate", type=float, default=0.001)
-    # parser.add_argument(
-    #     "--weight_decay", help="weight decay (L2 penalty)", type=float, default=0.0
-    # )
-    # parser.add_argument(
-    #     "--lrd", help="learning rate decay", type=float, default=0.99996
-    # )
-    # parser.add_argument("--clip-norm", help="Clip norm", type=float, default=10.0)
-    # parser.add_argument("--beta1", type=float, default=0.96)
-    # parser.add_argument("--beta2", type=float, default=0.999)
-    # parser.add_argument(
-    #     "--delete_states",
-    #     help="delete redundant states from exportdir",
-    #     type=bool,
-    #     default=False,
-    # )
-    # args = parser.parse_args()
-    # wandb.init(project="SimulatorValidation", name="gumbel-max-scm")
-    # wandb.config.lr = args.lr
-    # wandb.config.weight_decay = args.weight_decay
-    # wandb.config.lrd = args.lrd
-    # wandb.config.clip_norm = args.clip_norm
-    # wandb.config.betas = (args.beta1, args.beta2)
-    # main(args)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("path", help="path to observational data")
+    parser.add_argument(
+        "epochs", help="maximum number of epochs to train for", type=int, default=100
+    )
+    parser.add_argument("exportdir", help="path to output directory")
+    parser.add_argument("--lr", help="learning rate", type=float, default=0.001)
+    parser.add_argument(
+        "--weight_decay", help="weight decay (L2 penalty)", type=float, default=0.0
+    )
+    parser.add_argument(
+        "--lrd", help="learning rate decay", type=float, default=0.99996
+    )
+    parser.add_argument("--clip-norm", help="Clip norm", type=float, default=10.0)
+    parser.add_argument("--beta1", type=float, default=0.96)
+    parser.add_argument("--beta2", type=float, default=0.999)
+    parser.add_argument(
+        "--delete_states",
+        help="delete redundant states from exportdir",
+        type=bool,
+        default=False,
+    )
+    args = parser.parse_args()
+    wandb.init(project="SimulatorValidation", name="gumbel-max-scm-transition-model")
+    wandb.config.lr = args.lr
+    wandb.config.weight_decay = args.weight_decay
+    wandb.config.lrd = args.lrd
+    wandb.config.clip_norm = args.clip_norm
+    wandb.config.betas = (args.beta1, args.beta2)
+    main(args)
