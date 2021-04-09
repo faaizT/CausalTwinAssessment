@@ -9,13 +9,15 @@ class Combiner(T.nn.Module):
     through the hidden state of the RNN (see the pytorch module `rnn` below)
     """
 
-    def __init__(self, z_dim, rnn_dim, out_dim):
+    def __init__(self, z_dim, rnn_dim, out_dim, use_cuda=False):
         super().__init__()
         # initialize the three linear transformations used in the neural network
         self.lin_z_to_hidden = T.nn.Linear(z_dim, rnn_dim)
         self.lin_hidden_to_logits = T.nn.Linear(rnn_dim, out_dim)
         # initialize the two non-linearities used in the neural network
         self.leakyRelu = T.nn.LeakyReLU()
+        if use_cuda:
+            self.cuda()
 
     def forward(self, z_t_1, h_rnn):
         """
@@ -37,13 +39,15 @@ class Combiner_without_rnn(T.nn.Module):
     through the hidden state of the RNN (see the pytorch module `rnn` below)
     """
 
-    def __init__(self, z_dim, hidden_dim, out_dim):
+    def __init__(self, z_dim, hidden_dim, out_dim, use_cuda=False):
         super().__init__()
         # initialize the three linear transformations used in the neural network
         self.lin_z_to_hidden = T.nn.Linear(z_dim, hidden_dim)
         self.lin_hidden_to_logits = T.nn.Linear(hidden_dim, out_dim)
         # initialize the two non-linearities used in the neural network
         self.leakyRelu = T.nn.LeakyReLU()
+        if use_cuda:
+            self.cuda()
 
     def forward(self, z_t_1):
         """

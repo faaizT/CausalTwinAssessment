@@ -18,7 +18,7 @@ from pyro.optim import ClippedAdam
 def log_initial_distribution(model, epoch):
     s0_probs = model.s0_probs.detach()
     s0 = dist.Categorical(logits=torch.stack([s0_probs] * 1000)).sample()
-    table = wandb.Table(data=s0.detach().numpy().reshape(1000, 1), columns=["s0"])
+    table = wandb.Table(data=s0.cpu().detach().numpy().reshape(1000, 1), columns=["s0"])
     wandb.log(
         {
             "epoch": epoch,
@@ -80,7 +80,10 @@ def evaluate(svi, test_loader, use_cuda=False):
 
 
 def main(args):
-    gumbel_model = GumbelMaxModel(use_rnn=False)
+    use_cuda = torch.cuda.is_available()
+    device = torch.device('cuda' if use_cuda else 'cpu')
+    gumbel_model = GumbelMaxModel(use_rnn=True, use_cuda=use_cuda)
+    gumbel_model.to(device)
     exportdir = args.exportdir
     log_file_name = f"{exportdir}/gumbel_max_model.log"
     logging.basicConfig(
@@ -134,21 +137,16 @@ def main(args):
     # training loop
     i = 0
     for epoch in range(NUM_EPOCHS):
-        log_initial_distribution(gumbel_model, epoch)
-        epoch_loss_train = train(svi, train_loader, use_cuda=False)
+        epoch_loss_train = train(svi, train_loader, use_cuda=use_cuda)
         train_loss["Epochs"].append(epoch)
         train_loss["Training Loss"].append(epoch_loss_train)
         wandb.log({"epoch": epoch, "Training Loss": epoch_loss_train})
-        logging.info(
-            "initial state distribution: %.4f"
-            % gumbel_model.s0_probs.detach().numpy().sum()
-        )
         logging.info(
             "[epoch %03d]  average training loss: %.4f" % (epoch, epoch_loss_train)
         )
         if (epoch + 1) % SAVE_N_TEST_FREQUENCY == 0:
             # report test diagnostics
-            epoch_loss_val = evaluate(svi, validation_loader, use_cuda=False)
+            epoch_loss_val = evaluate(svi, validation_loader, use_cuda=use_cuda)
             validation_loss["Epochs"].append(epoch)
             validation_loss["Test Loss"].append(epoch_loss_val)
             wandb.log({"epoch": epoch, "Test Loss": epoch_loss_val})
@@ -164,7 +162,7 @@ def main(args):
             i += 1
     pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss.csv")
     pd.DataFrame(data=validation_loss).to_csv(exportdir + f"/validation-loss.csv")
-    epoch_loss_test = evaluate(svi, validation_loader, use_cuda=False)
+    epoch_loss_test = evaluate(svi, validation_loader, use_cuda=use_cuda)
     logging.info("last epoch error: %.4f" % epoch_loss_test)
     min_val, idx = min(
         (val, idx) for (idx, val) in enumerate(validation_loss["Test Loss"])
@@ -172,7 +170,7 @@ def main(args):
     logging.info(f"Index chosen: {idx}")
     gumbel_model.load_state_dict(torch.load(exportdir + f"/model-state-{idx}"))
     gumbel_model.eval()
-    epoch_loss_test = evaluate(svi, test_loader, use_cuda=False)
+    epoch_loss_test = evaluate(svi, test_loader, use_cuda=use_cuda)
     logging.info("Chosen epoch error: %.4f" % epoch_loss_test)
     save_states(gumbel_model, exportdir, save_final=True)
     if args.delete_states:

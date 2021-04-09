@@ -36,6 +36,7 @@ class GumbelMaxModel(nn.Module):
     ):
         super().__init__()
         self.use_cuda = use_cuda
+        device = torch.device('cuda' if use_cuda else 'cpu')
         self.use_rnn = use_rnn
         if use_rnn:
             self.rnn = nn.RNN(
@@ -47,17 +48,23 @@ class GumbelMaxModel(nn.Module):
                 num_layers=1,
                 dropout=rnn_dropout_rate,
             )
-            self.combiner = Combiner(z_dim=st_vec_dim, rnn_dim=rnn_dim, out_dim=n_st)
+            self.rnn.to(device)
+            self.combiner = Combiner(z_dim=st_vec_dim, rnn_dim=rnn_dim, out_dim=n_st, use_cuda=use_cuda)
         else:
             self.combiner = Combiner_without_rnn(
-                z_dim=st_vec_dim, hidden_dim=400, out_dim=n_st
+                z_dim=st_vec_dim, hidden_dim=400, out_dim=n_st, use_cuda=use_cuda
             )
+        self.combiner.to(device)
         self.h_0 = nn.Parameter(torch.zeros(1, 1, rnn_dim))
+        self.h_0.to(device)
         self.policy = Policy(
-            input_dim=st_vec_dim, hidden_1_dim=20, hidden_2_dim=20, output_dim=n_act
+            input_dim=st_vec_dim, hidden_1_dim=20, hidden_2_dim=20, output_dim=n_act, use_cuda=use_cuda
         )
+        self.policy.to(device)
         self.s0_probs = nn.Parameter(torch.zeros(n_st))
+        self.s0_probs.to(device)
         self.s0_probs_guide = nn.Parameter(torch.zeros(n_st))
+        self.s0_probs_guide.to(device)
         if use_cuda:
             self.cuda()
 

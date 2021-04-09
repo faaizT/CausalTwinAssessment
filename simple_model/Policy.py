@@ -4,7 +4,7 @@ import pyro.distributions as dist
 
 
 class Policy(T.nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_1_dim=8, hidden_2_dim=8):
+    def __init__(self, input_dim, output_dim, hidden_1_dim=8, hidden_2_dim=8, use_cuda=False):
         super(Policy, self).__init__()
         self.hid1 = T.nn.Linear(input_dim, hidden_1_dim)
         self.hid2 = T.nn.Linear(hidden_1_dim, hidden_2_dim)
@@ -17,6 +17,8 @@ class Policy(T.nn.Module):
         T.nn.init.zeros_(self.hid2.bias)
         T.nn.init.xavier_uniform_(self.outp.weight)
         T.nn.init.zeros_(self.outp.bias)
+        if use_cuda:
+            self.cuda()
 
     def forward(self, x):
         z = self.leakyRelu(self.hid1(x))
