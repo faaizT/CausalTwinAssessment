@@ -45,7 +45,7 @@ def train(svi, train_loader, use_cuda=False):
             actions = actions.cuda()
             masks = masks.cuda()
         # do ELBO gradient and accumulate loss
-        epoch_loss += svi.step(x.float(), actions.float(), masks.float(), reversed_x.float())
+        epoch_loss += svi.step(x.float(), actions.float(), masks, reversed_x.float())
     # return epoch loss
     normalizer_train = len(train_loader.dataset)
     total_epoch_loss_train = epoch_loss / normalizer_train
@@ -65,7 +65,9 @@ def evaluate(svi, test_loader, use_cuda=False):
             actions = actions.cuda()
             masks = masks.cuda()
         # compute ELBO estimate and accumulate loss
-        test_loss += svi.evaluate_loss(x.float(), actions.float(), masks.float(), reversed_x.float())
+        test_loss += svi.evaluate_loss(
+            x.float(), actions.float(), masks, reversed_x.float()
+        )
     normalizer_test = len(test_loader.dataset)
     total_epoch_loss_test = test_loss / normalizer_test
     return total_epoch_loss_test
@@ -73,7 +75,7 @@ def evaluate(svi, test_loader, use_cuda=False):
 
 def main(args):
     use_cuda = torch.cuda.is_available()
-    device = torch.device('cuda' if use_cuda else 'cpu')
+    device = torch.device("cuda" if use_cuda else "cpu")
     gumbel_model = GumbelMaxModel(use_rnn=False, use_cuda=use_cuda)
     gumbel_model.to(device)
     exportdir = args.exportdir
@@ -83,7 +85,9 @@ def main(args):
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[logging.FileHandler(log_file_name), logging.StreamHandler()],
     )
-    observational_dataset = ObservationalDataset(args.path, xt_columns=cols, action_column="A_t")
+    observational_dataset = ObservationalDataset(
+        args.path, xt_columns=cols, action_columns=["A_t"]
+    )
     pyro.clear_param_store()
     validation_split = 0.20
     test_split = 0.20

@@ -157,13 +157,25 @@ class MdpPyro(MDP):
 
     def transition(self, action, mini_batch, mini_batch_mask, t):
         hr_probs, sysbp_probs, glucose_probs, percoxyg_probs = self.transition_probs(action)
-        hr_state = pyro.sample(f"x{t}_hr", dist.Categorical(probs=hr_probs).mask(mini_batch_mask[:, t]), obs=mini_batch[:, t, cols.index("hr_state")])
+        hr_state = pyro.sample(
+            f"x{t}_hr", 
+            dist.Categorical(probs=hr_probs).mask(mini_batch_mask[:, t]), 
+            obs=mini_batch[:, t, cols.index("hr_state")])
         self.state.hr_state = hr_state
-        sysbp_state = pyro.sample(f"x{t}_sysbp", dist.Categorical(probs=sysbp_probs).mask(mini_batch_mask[:, t]), obs=mini_batch[:, t, cols.index("sysbp_state")])
+        sysbp_state = pyro.sample(
+            f"x{t}_sysbp", 
+            dist.Categorical(probs=sysbp_probs).mask(mini_batch_mask[:, t]), 
+            obs=mini_batch[:, t, cols.index("sysbp_state")])
         self.state.sysbp_state = sysbp_state
-        glucose_state = pyro.sample(f"x{t}_glucose", dist.Categorical(probs=glucose_probs).mask(mini_batch_mask[:, t]), obs=mini_batch[:, t, cols.index("glucose_state")])
+        glucose_state = pyro.sample(
+            f"x{t}_glucose", 
+            dist.Categorical(probs=glucose_probs).mask(mini_batch_mask[:, t]), 
+            obs=mini_batch[:, t, cols.index("glucose_state")])
         self.state.glucose_state = glucose_state
-        percoxyg_state = pyro.sample(f"x{t}_percoxyg", dist.Categorical(probs=percoxyg_probs).mask(mini_batch_mask[:, t]), obs=mini_batch[:, t, cols.index("percoxyg_state")])
+        percoxyg_state = pyro.sample(
+            f"x{t}_percoxyg", 
+            dist.Categorical(probs=percoxyg_probs).mask(mini_batch_mask[:, t]), 
+            obs=mini_batch[:, t, cols.index("percoxyg_state")])
         self.state.percoxyg_state = percoxyg_state
         self.state.antibiotic_state = action.antibiotic
         self.state.vent_state = action.ventilation
