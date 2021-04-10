@@ -59,7 +59,10 @@ class GumbelMaxModel(nn.Module):
                 num_layers=1,
                 dropout=rnn_dropout_rate,
             )
-        self.s0_diab_guide = Net(input_dim=14, output_dim=2)
+        T_max = 5
+        self.s0_diab_guide = Net(
+            input_dim=len(cols) * T_max, hidden_dim=20, output_dim=2
+        )
         self.s0_diab_guide.to(device)
         if use_cuda:
             self.cuda()
@@ -126,7 +129,15 @@ class GumbelMaxModel(nn.Module):
                 "s0_diab_state",
                 dist.Categorical(
                     logits=self.s0_diab_guide(
-                        torch.column_stack((mini_batch[:, 0, :], mini_batch[:, 1, :]))
+                        torch.column_stack(
+                            (
+                                mini_batch[:, 0, :],
+                                mini_batch[:, 1, :],
+                                mini_batch[:, 2, :],
+                                mini_batch[:, 3, :],
+                                mini_batch[:, 4, :],
+                            )
+                        )
                     )
                 ),
             )
