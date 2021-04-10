@@ -14,6 +14,7 @@ class ObservationalDataset(Dataset):
         actions_data = data[action_column]
         self.ehr_data = []
         self.ehr_action_data = []
+        self.ehr_mask = []
         trajectory = []
         actions = []
         trajectory_mask = []
@@ -21,14 +22,18 @@ class ObservationalDataset(Dataset):
             if i > 0 and data.iloc[i]['id'] == data.iloc[i-1]['id']:
                 trajectory.append(torch.tensor(data_filtered.iloc[i].values))
                 actions.append(torch.tensor(actions_data.iloc[i]))
+                trajectory_mask.append(torch.tensor(int(-1 not in data_filtered.iloc[i].values)))
             else:
                 if i > 0:
                     self.ehr_data.append(torch.stack(trajectory))
                     self.ehr_action_data.append(torch.stack(actions))
+                    self.ehr_mask.append(torch.stack(trajectory_mask))
                 trajectory = [torch.tensor(data_filtered.iloc[i].values)]
                 actions = [torch.tensor(actions_data.iloc[i])]
+                trajectory_mask = [torch.tensor(int(-1 not in data_filtered.iloc[i].values))]
         self.ehr_data.append(torch.stack(trajectory))
         self.ehr_action_data.append(torch.stack(actions))
+        self.ehr_mask.append(torch.stack(trajectory_mask))
 
     def __len__(self):
         return len(self.ehr_data)
@@ -39,4 +44,5 @@ class ObservationalDataset(Dataset):
 
         sample = self.ehr_data[idx]
         actions = self.ehr_action_data[idx]
-        return sample, actions
+        masks = self.ehr_mask[idx]
+        return sample, actions, masks

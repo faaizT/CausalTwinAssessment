@@ -60,9 +60,9 @@ class GumbelMaxModel(nn.Module):
         if use_cuda:
             self.cuda()
 
-    def model(self, mini_batch, actions_obs, mini_batch_reversed):
-        # T_max = mini_batch.size(1)
-        T_max = 2
+    def model(self, mini_batch, actions_obs, mini_batch_mask, mini_batch_reversed):
+        T_max = mini_batch.size(1)
+        # T_max = 2
         pyro.module("gumbel_max", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
             s0_diab = pyro.sample(f"s0_diab_state", dist.Categorical(logits=self.s0_diab_logits)).float()
@@ -74,20 +74,22 @@ class GumbelMaxModel(nn.Module):
             a_prev = Action(action_idx=torch.zeros(len(mini_batch)))
             state_categ = torch.column_stack((s0_hr, s0_sysbp, s0_percoxyg, s0_glucose, a_prev.antibiotic, a_prev.vasopressors, a_prev.ventilation, s0_diab.reshape(-1)))
             mdp = MdpPyro(init_state_categ=state_categ)
-            for t in range(T_max):
+            for t in range(T_max - 1):
                 # TODO: FIX THIS
                 # if (mini_batch[i, t, :] == -1).sum() > 0:
                 #     break
                 at = pyro.sample(
                     f"a{t}",
-                    dist.Categorical(logits=self.policy(mdp.state.get_state_tensor())),
+                    dist.Categorical(logits=self.policy(mdp.state.get_state_tensor()))
+                    .mask(mini_batch_mask[:, t+1]),
+                    # .to_event(1),
                     obs=actions_obs[:, t],
                 )
                 action = Action(action_idx=at)
-                if t < T_max - 1:
-                    mdp.transition(action, mini_batch, t+1)
+                # if t < T_max - 1:
+                mdp.transition(action, mini_batch, mini_batch_mask, t+1)
 
-    def guide(self, mini_batch, actions_obs, mini_batch_reversed):
+    def guide(self, mini_batch, actions_obs, mini_batch_mask, mini_batch_reversed):
         # T_max = mini_batch.size(1)
         T_max = 2
         pyro.module("gumbel_max", self)
