@@ -34,7 +34,7 @@ class GumbelMaxModel(nn.Module):
     ):
         super().__init__()
         self.use_cuda = use_cuda
-        device = torch.device("cuda" if use_cuda else "cpu")
+        self.device = torch.device("cuda" if use_cuda else "cpu")
         self.policy = Policy(
             input_dim=st_vec_dim,
             hidden_1_dim=20,
@@ -42,9 +42,9 @@ class GumbelMaxModel(nn.Module):
             output_dim=n_act,
             use_cuda=use_cuda,
         )
-        self.policy.to(device)
+        self.policy.to(self.device)
         self.s0_diab_logits = nn.Parameter(torch.zeros(2))
-        self.s0_diab_logits.to(device)
+        self.s0_diab_logits.to(self.device)
         self.s0_hr = Net(input_dim=1, output_dim=3)
         self.s0_sysbp = Net(input_dim=1, output_dim=3)
         self.s0_glucose = Net(input_dim=1, output_dim=5)
@@ -63,7 +63,7 @@ class GumbelMaxModel(nn.Module):
         self.s0_diab_guide = Net(
             input_dim=len(cols) * T_max, hidden_dim=20, output_dim=2
         )
-        self.s0_diab_guide.to(device)
+        self.s0_diab_guide.to(self.device)
         if use_cuda:
             self.cuda()
 
@@ -108,7 +108,7 @@ class GumbelMaxModel(nn.Module):
                     s0_diab.reshape(-1),
                 )
             )
-            mdp = MdpPyro(init_state_categ=state_categ)
+            mdp = MdpPyro(init_state_categ=state_categ, device=self.device)
             for t in range(T_max - 1):
                 at = pyro.sample(
                     f"a{t}",
