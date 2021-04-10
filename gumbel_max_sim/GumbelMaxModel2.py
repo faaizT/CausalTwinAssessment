@@ -19,7 +19,6 @@ cols = [
     "antibiotic_state",
     "vaso_state",
     "vent_state",
-    "A_t",
 ]
 
 
@@ -61,7 +60,7 @@ class GumbelMaxModel(nn.Module):
         if use_cuda:
             self.cuda()
 
-    def model(self, mini_batch, mini_batch_reversed):
+    def model(self, mini_batch, actions_obs, mini_batch_reversed):
         # T_max = mini_batch.size(1)
         T_max = 2
         pyro.module("gumbel_max", self)
@@ -82,13 +81,13 @@ class GumbelMaxModel(nn.Module):
                 at = pyro.sample(
                     f"a{t}",
                     dist.Categorical(logits=self.policy(mdp.state.get_state_tensor())),
-                    obs=mini_batch[:, t, cols.index("A_t")],
+                    obs=actions_obs[:, t],
                 )
                 action = Action(action_idx=at)
                 if t < T_max - 1:
                     mdp.transition(action, mini_batch, t+1)
 
-    def guide(self, mini_batch, mini_batch_reversed):
+    def guide(self, mini_batch, actions_obs, mini_batch_reversed):
         # T_max = mini_batch.size(1)
         T_max = 2
         pyro.module("gumbel_max", self)
@@ -97,5 +96,5 @@ class GumbelMaxModel(nn.Module):
                 "s0_diab_state",
                 dist.Categorical(logits=self.s0_diab_guide(
                     torch.column_stack((
-                    mini_batch[:, 0, :7], mini_batch[:, 1, :7]))))
+                    mini_batch[:, 0, :], mini_batch[:, 1, :]))))
                     )

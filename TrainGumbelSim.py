@@ -9,7 +9,7 @@ import wandb
 import pyro
 import pyro.distributions as dist
 from gumbel_max_sim.GumbelMaxModel2 import GumbelMaxModel, cols
-from max_likelihood.utils.ObservationalDataset import ObservationalDataset
+from gumbel_max_sim.utils.ObservationalDataset import ObservationalDataset
 from pyro.infer import SVI, Trace_ELBO
 from torch.utils.data.sampler import SubsetRandomSampler
 from pyro.optim import ClippedAdam
@@ -36,14 +36,15 @@ def train(svi, train_loader, use_cuda=False):
     epoch_loss = 0.0
     # do a training epoch over each mini-batch x returned
     # by the data loader
-    for x in train_loader:
+    for x, actions in train_loader:
         # if on GPU put mini-batch into CUDA memory
         reversed_x = torch.flip(x, [1])
         if use_cuda:
             x = x.cuda()
             reversed_x = reversed_x.cuda()
+            actions = actions.cuda()
         # do ELBO gradient and accumulate loss
-        epoch_loss += svi.step(x.float(), reversed_x.float())
+        epoch_loss += svi.step(x.float(), actions.float(), reversed_x.float())
     # return epoch loss
     normalizer_train = len(train_loader.dataset)
     total_epoch_loss_train = epoch_loss / normalizer_train
@@ -54,14 +55,15 @@ def evaluate(svi, test_loader, use_cuda=False):
     # initialize loss accumulator
     test_loss = 0.0
     # compute the loss over the entire test set
-    for x in test_loader:
+    for x, actions in test_loader:
         # if on GPU put mini-batch into CUDA memory
         reversed_x = torch.flip(x, [1])
         if use_cuda:
             x = x.cuda()
             reversed_x = reversed_x.cuda()
+            actions = actions.cuda()
         # compute ELBO estimate and accumulate loss
-        test_loss += svi.evaluate_loss(x.float(), reversed_x.float())
+        test_loss += svi.evaluate_loss(x.float(), actions.float(), reversed_x.float())
     normalizer_test = len(test_loader.dataset)
     total_epoch_loss_test = test_loss / normalizer_test
     return total_epoch_loss_test
@@ -79,7 +81,7 @@ def main(args):
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[logging.FileHandler(log_file_name), logging.StreamHandler()],
     )
-    observational_dataset = ObservationalDataset(args.path, columns=cols)
+    observational_dataset = ObservationalDataset(args.path, xt_columns=cols, action_column="A_t")
     pyro.clear_param_store()
     validation_split = 0.20
     test_split = 0.20
