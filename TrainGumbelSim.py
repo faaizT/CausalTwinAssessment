@@ -246,7 +246,7 @@ if __name__ == "__main__":
         "--delete_states",
         help="delete redundant states from exportdir",
         type=bool,
-        default=False,
+        default=True,
     )
     args = parser.parse_args()
     wandb.init(project="SimulatorValidation", name="gumbel-max-scm-transition-model")
