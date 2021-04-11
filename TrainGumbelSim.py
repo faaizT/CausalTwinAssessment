@@ -11,8 +11,59 @@ import pyro.distributions as dist
 from gumbel_max_sim.GumbelMaxModel2 import GumbelMaxModel, cols
 from gumbel_max_sim.utils.ObservationalDataset import ObservationalDataset
 from pyro.infer import SVI, Trace_ELBO
+import torch
 from torch.utils.data.sampler import SubsetRandomSampler
 from pyro.optim import ClippedAdam
+
+
+def log_initial_state(model, epoch, device="cpu"):
+    softmax = torch.nn.Softmax(dim=0)
+    with torch.no_grad():
+        diab_data = [[0, softmax(model.s0_diab_logits).numpy()[0]],
+                     [1, softmax(model.s0_diab_logits).numpy()[1]]]
+        diab_table = wandb.Table(data=diab_data, columns=["s0_diab_idx", "probability"])
+        hr_no_diab = softmax(model.s0_hr(torch.FloatTensor([0]).to(device))).numpy()
+        hr_data_no_diab = [[0, hr_no_diab[0]],[1, hr_no_diab[1]], [2, hr_no_diab[2]]]
+        hr_no_diab_table = wandb.Table(data=hr_data_no_diab, columns=["s0_hr_no_diab", "probability"])
+        hr_diab = softmax(model.s0_hr(torch.FloatTensor([1]).to(device))).numpy()
+        hr_data_diab = [[0, hr_diab[0]],[1, hr_diab[1]], [2, hr_diab[2]]]
+        hr_diab_table = wandb.Table(data=hr_data_diab, columns=["s0_hr_diab", "probability"])
+        sysbp_no_diab = softmax(model.s0_sysbp(torch.FloatTensor([0]).to(device))).numpy()
+        sysbp_data_no_diab = [[0, sysbp_no_diab[0]],[1, sysbp_no_diab[1]], [2, sysbp_no_diab[2]]]
+        sysbp_no_diab_table = wandb.Table(data=sysbp_data_no_diab, columns=["s0_sysbp_no_diab", "probability"])
+        sysbp_diab = softmax(model.s0_sysbp(torch.FloatTensor([1]).to(device))).numpy()
+        sysbp_data_diab = [[0, sysbp_diab[0]],[1, sysbp_diab[1]], [2, sysbp_diab[2]]]
+        sysbp_diab_table = wandb.Table(data=sysbp_data_diab, columns=["s0_sysbp_diab", "probability"])
+        glucose_no_diab = softmax(model.s0_glucose(torch.FloatTensor([0]).to(device))).numpy()
+        glucose_data_no_diab = [[0, glucose_no_diab[0]],
+                                [1, glucose_no_diab[1]],
+                                [2, glucose_no_diab[2]],
+                                [3, glucose_no_diab[3]],
+                                [4, glucose_no_diab[4]]]
+        glucose_no_diab_table = wandb.Table(data=glucose_data_no_diab, columns=["s0_glucose_no_diab", "probability"])
+        glucose_diab = softmax(model.s0_glucose(torch.FloatTensor([1]).to(device))).numpy()
+        glucose_data_diab = [[0, glucose_diab[0]],
+                             [1, glucose_diab[1]],
+                             [2, glucose_diab[2]],
+                             [3, glucose_diab[3]],
+                             [4, glucose_diab[4]]]
+        glucose_diab_table = wandb.Table(data=glucose_data_diab, columns=["s0_glucose_diab", "probability"])
+        percoxyg_no_diab = softmax(model.s0_percoxyg(torch.FloatTensor([0]).to(device))).numpy()
+        percoxyg_data_no_diab = [[0, percoxyg_no_diab[0]],[1, percoxyg_no_diab[1]]]
+        percoxyg_no_diab_table = wandb.Table(data=percoxyg_data_no_diab, columns=["s0_percoxyg_no_diab", "probability"])
+        percoxyg_diab = softmax(model.s0_percoxyg(torch.FloatTensor([1]).to(device))).numpy()
+        percoxyg_data_diab = [[0, percoxyg_diab[0]],[1, percoxyg_diab[1]]]
+        percoxyg_diab_table = wandb.Table(data=percoxyg_data_diab, columns=["s0_percoxyg_diab", "probability"])
+    wandb.log({'epoch': epoch,
+               'diab_table': diab_table,
+               'hr_no_diab_table': hr_no_diab_table,
+               'hr_diab_table': hr_diab_table,
+               'sysbp_no_diab_table': sysbp_no_diab_table,
+               'sysbp_diab_table': sysbp_diab_table,
+               'glucose_no_diab_table': glucose_no_diab_table,
+               'glucose_diab_table': glucose_diab_table,
+               'percoxyg_no_diab_table': percoxyg_no_diab_table,
+               'percoxyg_diab_table': percoxyg_diab_table})
 
 
 def delete_redundant_states(dir):
@@ -154,6 +205,7 @@ def main(args):
                 exportdir + f"/validation-loss.csv"
             )
             save_states(gumbel_model, exportdir, iter_num=i)
+            log_initial_state(gumbel_model, epoch, device)
             i += 1
     pd.DataFrame(data=train_loss).to_csv(exportdir + f"/train-loss.csv")
     pd.DataFrame(data=validation_loss).to_csv(exportdir + f"/validation-loss.csv")
@@ -168,6 +220,7 @@ def main(args):
     epoch_loss_test = evaluate(svi, test_loader, use_cuda=use_cuda)
     logging.info("Chosen epoch error: %.4f" % epoch_loss_test)
     save_states(gumbel_model, exportdir, save_final=True)
+    log_initial_state(gumbel_model, epoch, device)
     if args.delete_states:
         delete_redundant_states(exportdir)
 
