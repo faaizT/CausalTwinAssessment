@@ -207,29 +207,84 @@ class MdpPyro(MDP):
         percoxyg_probs = percoxyg_probs.gather(1, percoxyg_idx.to(dtype=torch.int64)).reshape((self.batch_size, 2))
         return hr_probs, sysbp_probs, glucose_probs, percoxyg_probs
 
-    def transition(self, action, mini_batch, mini_batch_mask, t):
+    def transition(self, action, mini_batch_mask, t):
         hr_probs, sysbp_probs, glucose_probs, percoxyg_probs = self.transition_probs(action)
         hr_state = pyro.sample(
-            f"x{t}_hr", 
-            dist.Categorical(probs=hr_probs).mask(mini_batch_mask[:, t]), 
-            obs=mini_batch[:, t, cols.index("hr_state")])
+            f"s{t}_hr",
+            dist.Categorical(probs=hr_probs).mask(mini_batch_mask[:, t]))
         self.state.hr_state = hr_state
         sysbp_state = pyro.sample(
-            f"x{t}_sysbp", 
-            dist.Categorical(probs=sysbp_probs).mask(mini_batch_mask[:, t]), 
-            obs=mini_batch[:, t, cols.index("sysbp_state")])
+            f"s{t}_sysbp",
+            dist.Categorical(probs=sysbp_probs).mask(mini_batch_mask[:, t]))
         self.state.sysbp_state = sysbp_state
         glucose_state = pyro.sample(
-            f"x{t}_glucose", 
-            dist.Categorical(probs=glucose_probs).mask(mini_batch_mask[:, t]), 
-            obs=mini_batch[:, t, cols.index("glucose_state")])
+            f"s{t}_glucose",
+            dist.Categorical(probs=glucose_probs).mask(mini_batch_mask[:, t]))
         self.state.glucose_state = glucose_state
         percoxyg_state = pyro.sample(
-            f"x{t}_percoxyg", 
-            dist.Categorical(probs=percoxyg_probs).mask(mini_batch_mask[:, t]), 
-            obs=mini_batch[:, t, cols.index("percoxyg_state")])
+            f"s{t}_percoxyg",
+            dist.Categorical(probs=percoxyg_probs).mask(mini_batch_mask[:, t]))
         self.state.percoxyg_state = percoxyg_state
-        self.state.antibiotic_state = action.antibiotic
-        self.state.vent_state = action.ventilation
-        self.state.vaso_state = action.vasopressors
+        antibiotic_probs = torch.zeros((self.batch_size, 2))
+        antibiotic_probs[torch.arange(self.batch_size), action.antibiotic.to(torch.long)] = 1
+        antibiotic_state = pyro.sample(
+            f"s{t}_antibiotic",
+            dist.Categorical(probs=antibiotic_probs).mask(mini_batch_mask[:, t]))
+        self.state.antibiotic_state = antibiotic_state
+        vent_probs = torch.zeros((self.batch_size, 2))
+        vent_probs[torch.arange(self.batch_size), action.ventilation.to(torch.long)] = 1
+        vent_state = pyro.sample(
+            f"s{t}_vent",
+            dist.Categorical(probs=vent_probs).mask(mini_batch_mask[:, t]))
+        self.state.vent_state = vent_state
+        vaso_probs = torch.zeros((self.batch_size, 2))
+        vaso_probs[torch.arange(self.batch_size), action.vasopressors.to(torch.long)] = 1
+        vaso_state = pyro.sample(
+            f"s{t}_vaso",
+            dist.Categorical(probs=vaso_probs).mask(mini_batch_mask[:, t]))
+        self.state.vaso_state = vaso_state
 
+
+    def emission(self, mini_batch, mini_batch_mask, t):
+        hr_probs = torch.ones((self.batch_size, 3))*0.05
+        hr_probs[torch.arange(self.batch_size), self.state.hr_state.to(torch.long)] = 0.90
+        sysbp_probs = torch.ones((self.batch_size, 3))*0.05
+        sysbp_probs[torch.arange(self.batch_size), self.state.sysbp_state.to(torch.long)] = 0.90
+        percoxyg_probs = torch.ones((self.batch_size, 2))*0.05
+        percoxyg_probs[torch.arange(self.batch_size), self.state.percoxyg_state.to(torch.long)] = 0.95
+        glucose_probs = torch.ones((self.batch_size, 5))*0.05
+        glucose_probs[torch.arange(self.batch_size), self.state.glucose_state.to(torch.long)] = 0.80
+        antibiotic_probs = torch.zeros((self.batch_size, 2))
+        antibiotic_probs[torch.arange(self.batch_size), self.state.antibiotic_state.to(torch.long)] = 1
+        vaso_probs = torch.zeros((self.batch_size, 2))
+        vaso_probs[torch.arange(self.batch_size), self.state.vaso_state.to(torch.long)] = 1
+        vent_probs = torch.zeros((self.batch_size, 2))
+        vent_probs[torch.arange(self.batch_size), self.state.vent_state.to(torch.long)] = 1
+        xt_hr_state = pyro.sample(
+            f"x{t}_hr",
+            dist.Categorical(probs=hr_probs).mask(mini_batch_mask[:, t]),
+            obs=mini_batch[:, t, cols.index("hr_state")])
+        xt_sysbp_state = pyro.sample(
+            f"x{t}_sysbp",
+            dist.Categorical(probs=sysbp_probs).mask(mini_batch_mask[:, t]),
+            obs=mini_batch[:, t, cols.index("sysbp_state")])
+        xt_glucose_state = pyro.sample(
+            f"x{t}_glucose",
+            dist.Categorical(probs=glucose_probs).mask(mini_batch_mask[:, t]),
+            obs=mini_batch[:, t, cols.index("glucose_state")])
+        xt_percoxyg_state = pyro.sample(
+            f"x{t}_percoxyg",
+            dist.Categorical(probs=percoxyg_probs).mask(mini_batch_mask[:, t]),
+            obs=mini_batch[:, t, cols.index("percoxyg_state")])
+        xt_antibiotic_state = pyro.sample(
+            f"x{t}_antibiotic",
+            dist.Categorical(probs=antibiotic_probs).mask(mini_batch_mask[:, t]),
+            obs=mini_batch[:, t, cols.index("antibiotic_state")])
+        xt_vaso_state = pyro.sample(
+            f"x{t}_vaso",
+            dist.Categorical(probs=vaso_probs).mask(mini_batch_mask[:, t]),
+            obs=mini_batch[:, t, cols.index("vaso_state")])
+        xt_vent_state = pyro.sample(
+            f"x{t}_vent",
+            dist.Categorical(probs=vent_probs).mask(mini_batch_mask[:, t]),
+            obs=mini_batch[:, t, cols.index("vent_state")])
