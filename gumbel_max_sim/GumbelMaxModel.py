@@ -65,24 +65,29 @@ class GumbelMaxModel(nn.Module):
         pyro.module("gumbel_max", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
             s0_diab = pyro.sample(
-                f"s0_diab_state", dist.Categorical(logits=self.s0_diab_logits)
+                f"s0_diab_state",
+                dist.Categorical(logits=self.s0_diab_logits).mask(mini_batch_mask[:, 0])
             ).float()
             s0_diab = s0_diab.unsqueeze(dim=1)
             s0_hr = pyro.sample(
                 f"s0_hr",
                 dist.Categorical(logits=self.s0_hr(s0_diab).unsqueeze(dim=0))
+                .mask(mini_batch_mask[:, 0])
             )
             s0_sysbp = pyro.sample(
                 f"s0_sysbp",
                 dist.Categorical(logits=self.s0_sysbp(s0_diab).unsqueeze(dim=0))
+                .mask(mini_batch_mask[:, 0])
             )
             s0_glucose = pyro.sample(
                 f"s0_glucose",
                 dist.Categorical(logits=self.s0_glucose(s0_diab).unsqueeze(dim=0))
+                .mask(mini_batch_mask[:, 0])
             )
             s0_percoxyg = pyro.sample(
                 f"s0_percoxyg",
                 dist.Categorical(logits=self.s0_percoxyg(s0_diab).unsqueeze(dim=0))
+                .mask(mini_batch_mask[:, 0])
             )
             a_prev = Action(action_idx=torch.zeros(len(mini_batch)))
             state_categ = torch.column_stack(
