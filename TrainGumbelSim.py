@@ -8,6 +8,7 @@ import torch
 import wandb
 import pyro
 import pyro.distributions as dist
+import pyro.contrib.examples.polyphonic_data_loader as poly
 from gumbel_max_sim.GumbelMaxModel2 import GumbelMaxModel, cols
 from gumbel_max_sim.utils.ObservationalDataset import ObservationalDataset
 from pyro.infer import SVI, Trace_ELBO
@@ -87,16 +88,18 @@ def train(svi, train_loader, use_cuda=False):
     epoch_loss = 0.0
     # do a training epoch over each mini-batch x returned
     # by the data loader
-    for x, actions, masks in train_loader:
+    for mini_batch, actions, lengths in train_loader:
         # if on GPU put mini-batch into CUDA memory
-        reversed_x = torch.flip(x, [1])
         if use_cuda:
-            x = x.cuda()
-            reversed_x = reversed_x.cuda()
+            mini_batch = mini_batch.cuda()
             actions = actions.cuda()
-            masks = masks.cuda()
+            lengths = lengths.cuda()
+        mini_batch, mini_batch_reversed, mini_batch_mask, mini_batch_seq_lengths \
+            = poly.get_mini_batch(torch.arange(mini_batch.size(0)), mini_batch, lengths, cuda=use_cuda)
         # do ELBO gradient and accumulate loss
-        epoch_loss += svi.step(x.float(), actions.float(), masks, reversed_x.float())
+        epoch_loss += svi.step(
+            mini_batch.float(), actions.float(), mini_batch_mask.float(), mini_batch_seq_lengths, mini_batch_reversed.float()
+        )
     # return epoch loss
     normalizer_train = len(train_loader.dataset)
     total_epoch_loss_train = epoch_loss / normalizer_train
@@ -107,17 +110,17 @@ def evaluate(svi, test_loader, use_cuda=False):
     # initialize loss accumulator
     test_loss = 0.0
     # compute the loss over the entire test set
-    for x, actions, masks in test_loader:
+    for mini_batch, actions, lengths in test_loader:
         # if on GPU put mini-batch into CUDA memory
-        reversed_x = torch.flip(x, [1])
         if use_cuda:
-            x = x.cuda()
-            reversed_x = reversed_x.cuda()
+            mini_batch = mini_batch.cuda()
             actions = actions.cuda()
-            masks = masks.cuda()
+            lengths = lengths.cuda()
+        mini_batch, mini_batch_reversed, mini_batch_mask, mini_batch_seq_lengths \
+            = poly.get_mini_batch(torch.arange(mini_batch.size(0)), mini_batch, lengths, cuda=use_cuda)
         # compute ELBO estimate and accumulate loss
         test_loss += svi.evaluate_loss(
-            x.float(), actions.float(), masks, reversed_x.float()
+            mini_batch.float(), actions.float(), mini_batch_mask.float(), mini_batch_seq_lengths, mini_batch_reversed.float()
         )
     normalizer_test = len(test_loader.dataset)
     total_epoch_loss_test = test_loss / normalizer_test
@@ -127,7 +130,7 @@ def evaluate(svi, test_loader, use_cuda=False):
 def main(args):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
-    gumbel_model = GumbelMaxModel(use_rnn=False, use_cuda=use_cuda)
+    gumbel_model = GumbelMaxModel(use_rnn=True, use_cuda=use_cuda)
     gumbel_model.to(device)
     exportdir = args.exportdir
     log_file_name = f"{exportdir}/gumbel_max_model.log"
@@ -232,6 +235,7 @@ if __name__ == "__main__":
         "epochs", help="maximum number of epochs to train for", type=int, default=100
     )
     parser.add_argument("exportdir", help="path to output directory")
+    parser.add_argument("--run_name", help="wandb run name", type=str, required=True)
     parser.add_argument("--lr", help="learning rate", type=float, default=0.001)
     parser.add_argument(
         "--weight_decay", help="weight decay (L2 penalty)", type=float, default=0.0
@@ -249,7 +253,7 @@ if __name__ == "__main__":
         default=True,
     )
     args = parser.parse_args()
-    wandb.init(project="SimulatorValidation", name="gumbel-max-scm-transition-model")
+    wandb.init(project="SimulatorValidation", name=args.run_name)
     wandb.config.lr = args.lr
     wandb.config.weight_decay = args.weight_decay
     wandb.config.lrd = args.lrd
