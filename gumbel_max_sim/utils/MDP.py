@@ -1,7 +1,7 @@
 from gumbel_max_sim.utils.State import State
 from gumbel_max_sim.utils.Action import Action
 from sepsisSimDiabetes.MDP import MDP
-from gumbel_max_sim.GumbelMaxModel import cols
+from gumbel_max_sim.utils.ObservationalDataset import cols
 import torch
 import pyro
 import pyro.distributions as dist

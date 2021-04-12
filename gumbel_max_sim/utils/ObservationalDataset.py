@@ -3,6 +3,17 @@ import torch
 from torch.utils.data import Dataset
 
 
+cols = [
+    "hr_state",
+    "sysbp_state",
+    "percoxyg_state",
+    "glucose_state",
+    "antibiotic_state",
+    "vaso_state",
+    "vent_state",
+]
+
+
 class ObservationalDataset(Dataset):
     def __init__(self, csv_file, xt_columns, action_columns):
         """

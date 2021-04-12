@@ -9,8 +9,8 @@ import wandb
 import pyro
 import pyro.distributions as dist
 import pyro.contrib.examples.polyphonic_data_loader as poly
-from gumbel_max_sim.GumbelMaxModel2 import GumbelMaxModel, cols
-from gumbel_max_sim.utils.ObservationalDataset import ObservationalDataset
+from gumbel_max_sim.GumbelMaxModel import GumbelMaxModel
+from gumbel_max_sim.utils.ObservationalDataset import ObservationalDataset, cols
 from pyro.infer import SVI, Trace_ELBO
 import torch
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -130,7 +130,7 @@ def evaluate(svi, test_loader, use_cuda=False):
 def main(args):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
-    gumbel_model = GumbelMaxModel(use_rnn=True, use_cuda=use_cuda)
+    gumbel_model = GumbelMaxModel(use_cuda=use_cuda)
     gumbel_model.to(device)
     exportdir = args.exportdir
     log_file_name = f"{exportdir}/gumbel_max_model.log"
