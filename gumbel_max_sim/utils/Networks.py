@@ -12,7 +12,7 @@ class Combiner(T.nn.Module):
     def __init__(self, z_dim, rnn_dim,
                 hr_dim=3, sysbp_dim=3, percoxyg_dim=2,
                 glucose_dim=5, antibiotics_dim=2, vaso_dim=2,
-                vent_dim=2, use_cuda=False):
+                vent_dim=2, use_cuda=False, tanh_activation=False):
         super().__init__()
         # initialize the three linear transformations used in the neural network
         self.lin_z_to_hidden = T.nn.Linear(z_dim, rnn_dim)
@@ -24,7 +24,10 @@ class Combiner(T.nn.Module):
         self.lin_hidden_to_vaso = T.nn.Linear(rnn_dim, vaso_dim)
         self.lin_hidden_to_vent = T.nn.Linear(rnn_dim, vent_dim)
         # initialize the two non-linearities used in the neural network
-        self.leakyRelu = T.nn.LeakyReLU()
+        if tanh_activation:
+            self.activation = T.nn.Tanh()
+        else:
+            self.activation = T.nn.LeakyReLU()
         if use_cuda:
             self.cuda()
 
@@ -35,7 +38,7 @@ class Combiner(T.nn.Module):
         parameterize the (diagonal) gaussian distribution q(z_t | z_{t-1}, x_{t:T})
         """
         # combine the rnn hidden state with a transformed version of z_t_1
-        h_combined = 0.5 * (self.leakyRelu(self.lin_z_to_hidden(z_t_1)) + h_rnn)
+        h_combined = 0.5 * (self.activation(self.lin_z_to_hidden(z_t_1)) + h_rnn)
         # use the combined hidden state to compute the mean used to sample z_t
         hr_logits = self.lin_hidden_to_hr(h_combined)
         sysbp_logits = self.lin_hidden_to_sysbp(h_combined)

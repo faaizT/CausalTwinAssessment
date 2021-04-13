@@ -22,6 +22,7 @@ class GumbelMaxModel(nn.Module):
         n_act=8,
         rnn_dim=40,
         rnn_dropout_rate=0.0,
+        tanh_activation=False
     ):
         super().__init__()
         self.use_cuda = use_cuda
@@ -43,20 +44,16 @@ class GumbelMaxModel(nn.Module):
         self.rnn = nn.RNN(
             input_size=len(cols),
             hidden_size=rnn_dim,
-            nonlinearity="relu",
+            nonlinearity="tanh",
             batch_first=True,
             bidirectional=False,
             num_layers=1,
             dropout=rnn_dropout_rate,
         )
-        self.combiner = Combiner(z_dim=st_vec_dim, rnn_dim=rnn_dim, use_cuda=use_cuda)
+        self.combiner = Combiner(z_dim=st_vec_dim, rnn_dim=rnn_dim, use_cuda=use_cuda, tanh_activation=tanh_activation)
         self.h_0 = nn.Parameter(torch.zeros(1, 1, rnn_dim))
         self.s0_diab_net = Net(input_dim=rnn_dim, hidden_dim=20, output_dim=2, use_cuda=use_cuda)
-        self.s_q_0_hr = nn.Parameter(torch.zeros(3))
-        self.s_q_0_sysbp = nn.Parameter(torch.zeros(3))
-        self.s_q_0_percoxyg = nn.Parameter(torch.zeros(2))
-        self.s_q_0_glucose_no_diab = nn.Parameter(torch.zeros(5))
-        self.s_q_0_glucose_diab = nn.Parameter(torch.zeros(5))
+        self.s_q_0 = nn.Parameter(torch.zeros(st_vec_dim-1))
         if use_cuda:
             self.cuda()
 
@@ -132,15 +129,9 @@ class GumbelMaxModel(nn.Module):
             s_q_0_diab = pyro.sample(
                 f"s0_diab_state", dist.Categorical(logits=self.s0_diab_net(rnn_output[:, 0, :]))
             )
-            s_q_0_hr = pyro.sample("s_q_0_hr", dist.Categorical(logits=self.s_q_0_hr), infer={'is_auxiliary': True})
-            s_q_0_sysbp = pyro.sample("s_q_0_sysbp", dist.Categorical(logits=self.s_q_0_sysbp), infer={'is_auxiliary': True})
-            s_q_0_percoxyg = pyro.sample("s_q_0_percoxyg", dist.Categorical(logits=self.s_q_0_percoxyg), infer={'is_auxiliary': True})
-            s_q_0_glucose_no_diab = pyro.sample("s_q_0_glucose_no_diab", dist.Categorical(logits=self.s_q_0_glucose_no_diab), infer={'is_auxiliary': True})
-            s_q_0_glucose_diab = pyro.sample("s_q_0_glucose_diab", dist.Categorical(logits=self.s_q_0_glucose_diab), infer={'is_auxiliary': True})
-            s_q_0_glucose = s_q_0_diab * s_q_0_glucose_diab + (1-s_q_0_diab) * s_q_0_glucose_no_diab
             s_q_0_at = torch.zeros(len(mini_batch))
             s_q_0_at.to(self.device)
-            s_prev = torch.column_stack((s_q_0_diab, s_q_0_hr, s_q_0_sysbp, s_q_0_percoxyg, s_q_0_glucose, s_q_0_at, s_q_0_at, s_q_0_at)).float()
+            s_prev = torch.column_stack((s_q_0_diab, self.s_q_0.expand(mini_batch.size(0), self.s_q_0.size(0)))).float()
             for t in range(T_max):
                 hr_logits, sysbp_logits, percoxyg_logits, glucose_logits, antibiotic_logits, vaso_logits, vent_logits = self.combiner(s_prev, rnn_output[:, t, :])
                 hr_state = pyro.sample(

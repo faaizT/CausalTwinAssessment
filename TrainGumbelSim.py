@@ -130,7 +130,7 @@ def evaluate(svi, test_loader, use_cuda=False):
 def main(args):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
-    gumbel_model = GumbelMaxModel(use_cuda=use_cuda)
+    gumbel_model = GumbelMaxModel(use_cuda=use_cuda, tanh_activation=args.tanh_act)
     gumbel_model.to(device)
     exportdir = args.exportdir
     log_file_name = f"{exportdir}/gumbel_max_model.log"
@@ -252,6 +252,13 @@ if __name__ == "__main__":
         type=bool,
         default=True,
     )
+    parser.add_argument(
+        "--tanh_act",
+        help="use tanh activation in combiner",
+        type=bool,
+        default=False,
+    )
+
     args = parser.parse_args()
     wandb.init(project="SimulatorValidation", name=args.run_name)
     wandb.config.lr = args.lr
