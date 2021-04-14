@@ -178,20 +178,30 @@ class MdpPyro(MDP):
 
     def transition_probs(self, action):
         antibiotics = torch.column_stack([action.antibiotic]*9).reshape(self.batch_size,3,3)
+        antibiotic_state = torch.column_stack([self.state.antibiotic_state]*9).reshape(self.batch_size,3,3)
         hr_antibiotics_on, sysbp_antibiotics_on = self.transition_antibiotics_on()
         hr_antibiotics_off, sysbp_antibiotics_off = self.transition_antibiotics_off()
-        hr_probs = antibiotics*hr_antibiotics_on + (1-antibiotics)*hr_antibiotics_off
-        sysbp_probs = antibiotics*sysbp_antibiotics_on + (1-antibiotics)*sysbp_antibiotics_off
+        hr_probs = antibiotics*hr_antibiotics_on + \
+                   antibiotic_state*(1-antibiotics)*hr_antibiotics_off + \
+                   (1-antibiotic_state)*(1-antibiotics)*torch.eye(3)
+        sysbp_probs = antibiotics*sysbp_antibiotics_on + \
+                      antibiotic_state*(1-antibiotics)*sysbp_antibiotics_off + \
+                      (1-antibiotic_state)*(1-antibiotics)*torch.eye(3)
         ventilation = torch.column_stack([action.ventilation]*4).reshape(self.batch_size,2,2)
+        vent_state = torch.column_stack([self.state.vent_state]*4).reshape(self.batch_size,2,2)
         percoxyg_vent_on = self.transition_vent_on()
         percoxyg_vent_off = self.transition_vent_off()
-        percoxyg_probs = ventilation*percoxyg_vent_on + (1-ventilation)*percoxyg_vent_off
+        percoxyg_probs = ventilation*percoxyg_vent_on + \
+                         vent_state*(1-ventilation)*percoxyg_vent_off + \
+                         (1-vent_state)*(1-ventilation)*torch.eye(2)
         sysbp_vaso_on, glucose_vaso_on = self.transition_vaso_on()
         sysbp_vaso_off, glucose_vaso_off = self.transition_vaso_off(), torch.stack([torch.eye(5)]*self.batch_size)
         vaso = torch.column_stack([action.vasopressors]*9).reshape(self.batch_size,3,3)
-        sysbp_probs = torch.matmul(sysbp_probs, vaso*sysbp_vaso_on + (1-vaso)*sysbp_vaso_off)
+        vaso_state = torch.column_stack([self.state.vaso_state]*9).reshape(self.batch_size,3,3)
+        sysbp_probs = torch.matmul(sysbp_probs, vaso*sysbp_vaso_on + vaso_state*(1-vaso)*sysbp_vaso_off + (1-vaso_state)*(1-vaso)*torch.eye(3))
         vaso = torch.column_stack([action.vasopressors]*25).reshape(self.batch_size,5,5)
-        glucose_probs = vaso*glucose_vaso_on + (1-vaso)*glucose_vaso_off
+        vaso_state = torch.column_stack([self.state.vaso_state]*25).reshape(self.batch_size,5,5)
+        glucose_probs = vaso*glucose_vaso_on + vaso_state*(1-vaso)*glucose_vaso_off + (1-vaso_state)*(1-vaso)*torch.eye(5)
         hr_fluctuate, sysbp_fluctuate, glucose_fluctuate, percoxyg_fluctuate = self.transition_fluctuate(action)
         sysbp_probs = torch.matmul(sysbp_probs, sysbp_fluctuate)
         hr_probs = torch.matmul(hr_probs, hr_fluctuate)
