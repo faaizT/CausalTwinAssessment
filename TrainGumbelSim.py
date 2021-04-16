@@ -136,7 +136,7 @@ def evaluate(svi, test_loader, use_cuda=False):
 def main(args):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
-    gumbel_model = GumbelMaxModel(use_cuda=use_cuda)
+    gumbel_model = GumbelMaxModel(simulator_name=args.simulator, use_cuda=use_cuda)
     gumbel_model.to(device)
     exportdir = args.exportdir
     log_file_name = f"{exportdir}/gumbel_max_model.log"
@@ -145,6 +145,7 @@ def main(args):
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[logging.FileHandler(log_file_name), logging.StreamHandler()],
     )
+    logging.info(f'Using simulator {args.simulator}')
     observational_dataset = ObservationalDataset(
         args.path, xt_columns=cols, action_columns=["A_t"]
     )
@@ -243,6 +244,7 @@ if __name__ == "__main__":
         "epochs", help="maximum number of epochs to train for", type=int, default=100
     )
     parser.add_argument("exportdir", help="path to output directory")
+    parser.add_argument("--simulator", help="name of simulator to run", type=str, default='real')
     parser.add_argument("--run_name", help="wandb run name", type=str, required=True)
     parser.add_argument("--lr", help="learning rate", type=float, default=0.001)
     parser.add_argument(

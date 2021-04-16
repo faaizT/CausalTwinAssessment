@@ -11,6 +11,7 @@ import pyro.contrib.examples.polyphonic_data_loader as poly
 from gumbel_max_sim.utils.State import State
 from gumbel_max_sim.utils.Action import Action
 from gumbel_max_sim.utils.MDP import MdpPyro
+from gumbel_max_sim.utils.Simulators import *
 from gumbel_max_sim.utils.ObservationalDataset import cols
 from .utils.Distributions import CategoricalVals
 from simple_model.Policy import Policy
@@ -20,6 +21,7 @@ from gumbel_max_sim.utils.Networks import Combiner, Combiner_without_rnn, Net
 class GumbelMaxModel(nn.Module):
     def __init__(
         self,
+        simulator_name,
         use_cuda=False,
         st_vec_dim=8,
         n_act=8,
@@ -34,6 +36,7 @@ class GumbelMaxModel(nn.Module):
             output_dim=n_act,
             use_cuda=use_cuda,
         )
+        self.simulator_name = simulator_name
         self.policy.to(self.device)
         self.s0_diab_logits = nn.Parameter(torch.zeros(2))
         self.s0_diab_logits.to(self.device)
@@ -94,7 +97,7 @@ class GumbelMaxModel(nn.Module):
             )
             a_prev = Action(action_idx=torch.zeros(len(mini_batch)))
             state = State(hr_state=s0_hr, sysbp_state=s0_sysbp, percoxyg_state=s0_percoxyg, glucose_state=s0_glucose, antibiotic_state=a_prev.antibiotic, vaso_state=a_prev.vasopressors, vent_state=a_prev.ventilation, diabetic_idx=s0_diab)
-            mdp = MdpPyro(init_state=state, device=self.device)
+            mdp = get_simulator(name=self.simulator_name, init_state=state, device=self.device)
             mdp.emission(mini_batch, mini_batch_mask, t=0)
             for t in pyro.markov(range(T_max-1)):
                 at = pyro.sample(

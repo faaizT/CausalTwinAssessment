@@ -37,7 +37,6 @@ class MdpPyro(MDP):
 
         return hr_probs.to(self.device), sysbp_probs.to(self.device)
 
-
     def transition_antibiotics_off(self):
         """
         antibiotics state off
@@ -69,7 +68,6 @@ class MdpPyro(MDP):
         ])
         percoxyg_probs = torch.stack(2*[torch.stack([percoxyg_probs]*self.batch_size)])
         return percoxyg_probs.to(self.device)
-
 
     def transition_vent_off(self):
         """
@@ -252,20 +250,20 @@ class MdpPyro(MDP):
 
     def emission(self, mini_batch, mini_batch_mask, t):
         hr_sysbp_probs = torch.FloatTensor([
-            [0.90, 0.05, 0.05],
+            [0.95, 0.05, 0.00],
             [0.05, 0.90, 0.05],
-            [0.05, 0.05, 0.90]
+            [0.00, 0.05, 0.95]
         ])
         percoxyg_probs = torch.FloatTensor([
             [0.95, 0.05],
             [0.05, 0.95]
         ])
         glucose_probs = torch.FloatTensor([
-            [0.80, 0.05, 0.05, 0.05, 0.05],
-            [0.05, 0.80, 0.05, 0.05, 0.05],
-            [0.05, 0.05, 0.80, 0.05, 0.05],
-            [0.05, 0.05, 0.05, 0.80, 0.05],
-            [0.05, 0.05, 0.05, 0.05, 0.80]
+            [0.95, 0.05, 0.00, 0.00, 0.00],
+            [0.05, 0.90, 0.05, 0.00, 0.00],
+            [0.00, 0.05, 0.90, 0.05, 0.00],
+            [0.00, 0.00, 0.05, 0.90, 0.05],
+            [0.00, 0.00, 0.00, 0.05, 0.95]
         ])
         xt_hr_state = pyro.sample(
             f"x{t}_hr",
