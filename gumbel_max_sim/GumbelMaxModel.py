@@ -45,10 +45,10 @@ class GumbelMaxModel(nn.Module):
         self.posterior_hr = nn.Parameter(torch.zeros((2,3,3,2,5,3,3,2,5,2,2,2,3)))
 
         self.s0_diab_net = Net(input_dim=len(cols)*2, hidden_dim=20, output_dim=2, use_cuda=use_cuda)
-        self.s0_hr_net = Net(input_dim=len(cols)*2 + 1, hidden_dim=20, output_dim=3, use_cuda=use_cuda)
-        self.s0_sysbp_net = Net(input_dim=len(cols)*2 + 1, hidden_dim=20, output_dim=3, use_cuda=use_cuda)
-        self.s0_percoxyg_net = Net(input_dim=len(cols)*2 + 1, hidden_dim=20, output_dim=2, use_cuda=use_cuda)
-        self.s0_glucose_net = Net(input_dim=len(cols)*2 + 1, hidden_dim=20, output_dim=5, use_cuda=use_cuda)
+        self.s0_hr_net = Net(input_dim=len(cols)*2 , hidden_dim=20, output_dim=3, use_cuda=use_cuda)
+        self.s0_sysbp_net = Net(input_dim=len(cols)*2 , hidden_dim=20, output_dim=3, use_cuda=use_cuda)
+        self.s0_percoxyg_net = Net(input_dim=len(cols)*2 , hidden_dim=20, output_dim=2, use_cuda=use_cuda)
+        self.s0_glucose_net = Net(input_dim=len(cols)*2, hidden_dim=20, output_dim=5, use_cuda=use_cuda)
 
         self.s1_hr_net = Net(input_dim=len(cols), hidden_dim=20, output_dim=3, use_cuda=use_cuda)
         self.s1_sysbp_net = Net(input_dim=len(cols), hidden_dim=20, output_dim=3, use_cuda=use_cuda)
@@ -66,41 +66,41 @@ class GumbelMaxModel(nn.Module):
             s0_diab = pyro.sample(
                 f"s0_diab_state",
                 dist.Categorical(logits=self.s0_diab_logits).mask(mini_batch_mask[:, 0]),
-                infer={"enumerate": "sequential"}
+                infer={"enumerate": "parallel"}
             )
             s0_hr = pyro.sample(
                 f"s0_hr",
-                dist.Categorical(logits=Vindex(self.s0_hr)[s0_diab.to(torch.long), :])
+                dist.Categorical(logits=Vindex(self.s0_hr)[s0_diab, :])
                 .mask(mini_batch_mask[:, 0]),
                 infer={"enumerate": "parallel"}
             )
             s0_sysbp = pyro.sample(
                 f"s0_sysbp",
-                dist.Categorical(logits=Vindex(self.s0_sysbp)[s0_diab.to(torch.long), :])
+                dist.Categorical(logits=Vindex(self.s0_sysbp)[s0_diab, :])
                 .mask(mini_batch_mask[:, 0]),
                 infer={"enumerate": "parallel"}
             )
             s0_glucose = pyro.sample(
                 f"s0_glucose",
-                dist.Categorical(logits=Vindex(self.s0_glucose)[s0_diab.to(torch.long), :])
+                dist.Categorical(logits=Vindex(self.s0_glucose)[s0_diab, :])
                 .mask(mini_batch_mask[:, 0]),
                 infer={"enumerate": "parallel"}
             )
             s0_percoxyg = pyro.sample(
                 f"s0_percoxyg",
-                dist.Categorical(logits=Vindex(self.s0_percoxyg)[s0_diab.to(torch.long), :])
+                dist.Categorical(logits=Vindex(self.s0_percoxyg)[s0_diab, :])
                 .mask(mini_batch_mask[:, 0]),
                 infer={"enumerate": "parallel"}
             )
             a_prev = Action(action_idx=torch.zeros(len(mini_batch)))
-            state = State(hr_state=s0_hr, sysbp_state=s0_sysbp, percoxyg_state=s0_percoxyg, glucose_state=s0_glucose, antibiotic_state=a_prev.antibiotic, vaso_state=a_prev.vasopressors, vent_state=a_prev.ventilation, diabetic_idx=s0_diab.expand(len(mini_batch)))
+            state = State(hr_state=s0_hr, sysbp_state=s0_sysbp, percoxyg_state=s0_percoxyg, glucose_state=s0_glucose, antibiotic_state=a_prev.antibiotic, vaso_state=a_prev.vasopressors, vent_state=a_prev.ventilation, diabetic_idx=s0_diab)
             mdp = MdpPyro(init_state=state, device=self.device)
             mdp.emission(mini_batch, mini_batch_mask, t=0)
             for t in pyro.markov(range(T_max-1)):
                 at = pyro.sample(
                     f"a{t}",
                     dist.Categorical(
-                        logits=Vindex(self.action_probs)[state.diabetic_idx.to(torch.long),
+                        logits=Vindex(self.action_probs)[state.diabetic_idx,
                                                          state.hr_state,
                                                          state.sysbp_state,
                                                          state.percoxyg_state,
@@ -126,26 +126,26 @@ class GumbelMaxModel(nn.Module):
                 f"s0_diab_state",
                 dist.Categorical(logits=self.s0_diab_net(torch.column_stack((mini_batch[:,0,:], mini_batch[:,1,:]))))
                 .mask(mini_batch_mask[:, 0]),
-                infer={"enumerate": "sequential"}
+                infer={"enumerate": "parallel"}
             )
             hr_state = pyro.sample(
                 f"s0_hr",
-                dist.Categorical(logits=self.s0_hr_net(torch.column_stack((s_q_0_diab.expand(len(mini_batch)), mini_batch[:,0,:], mini_batch[:,1,:]))))
+                dist.Categorical(logits=self.s0_hr_net(torch.column_stack((mini_batch[:,0,:], mini_batch[:,1,:]))))
                 .mask(mini_batch_mask[:, 0]),
                 infer={"enumerate": "parallel"}
             )
             sysbp_state = pyro.sample(
-                f"s0_sysbp", dist.Categorical(logits=self.s0_sysbp_net(torch.column_stack((s_q_0_diab.expand(len(mini_batch)), mini_batch[:,0,:], mini_batch[:,1,:]))))
+                f"s0_sysbp", dist.Categorical(logits=self.s0_sysbp_net(torch.column_stack((mini_batch[:,0,:], mini_batch[:,1,:]))))
                 .mask(mini_batch_mask[:, 0]),
                 infer={"enumerate": "parallel"}
             )
             percoxyg_state = pyro.sample(
-                f"s0_percoxyg", dist.Categorical(logits=self.s0_percoxyg_net(torch.column_stack((s_q_0_diab.expand(len(mini_batch)), mini_batch[:,0,:], mini_batch[:,1,:]))))
+                f"s0_percoxyg", dist.Categorical(logits=self.s0_percoxyg_net(torch.column_stack((mini_batch[:,0,:], mini_batch[:,1,:]))))
                 .mask(mini_batch_mask[:, 0]),
                 infer={"enumerate": "parallel"}
             )
             glucose_state = pyro.sample(
-                f"s0_glucose", dist.Categorical(logits=self.s0_glucose_net(torch.column_stack((s_q_0_diab.expand(len(mini_batch)), mini_batch[:,0,:], mini_batch[:,1,:]))))
+                f"s0_glucose", dist.Categorical(logits=self.s0_glucose_net(torch.column_stack((mini_batch[:,0,:], mini_batch[:,1,:]))))
                 .mask(mini_batch_mask[:, 0]),
                 infer={"enumerate": "parallel"}
             )
