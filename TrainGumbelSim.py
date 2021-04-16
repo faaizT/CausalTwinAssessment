@@ -20,6 +20,7 @@ from pyro.infer import SVI, Trace_ELBO, TraceEnum_ELBO
 import torch
 from torch.utils.data.sampler import SubsetRandomSampler
 from pyro.optim import ClippedAdam
+from pyro import poutine
 
 
 def log_initial_state(model, epoch, device="cpu"):
@@ -185,7 +186,8 @@ def main(args):
     }
     optimizer = ClippedAdam(adam_params)
     elbo = TraceEnum_ELBO(max_plate_nesting=2, strict_enumeration_warning=True)
-    svi = SVI(gumbel_model.model, gumbel_model.guide, optimizer, elbo)
+    guide = AutoDelta(poutine.block(gumbel_model.model))
+    svi = SVI(gumbel_model.model, guide, optimizer, elbo)
     NUM_EPOCHS = args.epochs
     train_loss = {"Epochs": [], "Training Loss": []}
     validation_loss = {"Epochs": [], "Test Loss": []}
