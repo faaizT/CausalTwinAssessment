@@ -73,6 +73,11 @@ def log_initial_state(model, epoch, device="cpu"):
                'percoxyg_diab_table': percoxyg_diab_table})
 
 
+def write_to_file(file_name, simulator_name, loss):
+    with open(file_name, 'a', 1) as f:
+        f.write(simulator_name + ',' + str(loss) + os.linesep)
+
+
 def delete_redundant_states(dir):
     pattern = f"(model|optimiser)-state-[0-9]+"
     for f in os.listdir(dir):
@@ -192,7 +197,7 @@ def main(args):
     NUM_EPOCHS = args.epochs
     train_loss = {"Epochs": [], "Training Loss": []}
     validation_loss = {"Epochs": [], "Test Loss": []}
-    SAVE_N_TEST_FREQUENCY = 4
+    SAVE_N_TEST_FREQUENCY = 10
     # training loop
     i = 0
     for epoch in range(NUM_EPOCHS):
@@ -233,6 +238,7 @@ def main(args):
     logging.info("Chosen epoch error: %.4f" % epoch_loss_test)
     save_states(gumbel_model, exportdir, save_final=True)
     log_initial_state(gumbel_model, epoch, device)
+    write_to_file(args.output_file, args.simulator, epoch_loss_test)
     if args.delete_states:
         delete_redundant_states(exportdir)
 
@@ -244,6 +250,7 @@ if __name__ == "__main__":
         "epochs", help="maximum number of epochs to train for", type=int, default=100
     )
     parser.add_argument("exportdir", help="path to output directory")
+    parser.add_argument("--output_file", help="Output file to contain final test loss results", required=True)
     parser.add_argument("--simulator", help="name of simulator to run", type=str, default='real')
     parser.add_argument("--run_name", help="wandb run name", type=str, required=True)
     parser.add_argument("--lr", help="learning rate", type=float, default=0.001)
@@ -264,6 +271,10 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    if not os.path.exists(args.output_file):
+        with open(args.output_file, "w") as f:
+            f.write('simulator name,test loss' + os.linesep)
+
     wandb.init(project="SimulatorValidation", name=args.run_name)
     wandb.config.lr = args.lr
     wandb.config.weight_decay = args.weight_decay
