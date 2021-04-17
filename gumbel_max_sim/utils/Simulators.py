@@ -57,6 +57,19 @@ class MDPVentIntensity2(MdpPyro):
         percoxyg_probs = torch.stack(2*[torch.stack([percoxyg_probs]*self.batch_size)])
         return percoxyg_probs.to(self.device)
 
+    def transition_vent_off(self):
+        """
+        ventilation state off
+        if ventilation was on: percent oxygen: normal -> lo w.p. .7
+        """
+        vent_state = torch.column_stack([self.state.vent_state]*4).reshape(self.batch_size,2,2)
+        percoxyg_probs = vent_state*torch.FloatTensor([
+            [1.0, 0.0],
+            [0.7, 0.3]
+        ]) + (1-vent_state)*torch.eye(2)
+        percoxyg_probs = torch.stack([percoxyg_probs]*2)
+        return percoxyg_probs.to(self.device)
+
 
 class MDPVentIntensity1(MdpPyro):
     def __init__(self, init_state, device):
@@ -72,6 +85,19 @@ class MDPVentIntensity1(MdpPyro):
             [0.0, 1.0]
         ])
         percoxyg_probs = torch.stack(2*[torch.stack([percoxyg_probs]*self.batch_size)])
+        return percoxyg_probs.to(self.device)
+
+    def transition_vent_off(self):
+        """
+        ventilation state off
+        if ventilation was on: percent oxygen: normal -> lo w.p. .4
+        """
+        vent_state = torch.column_stack([self.state.vent_state]*4).reshape(self.batch_size,2,2)
+        percoxyg_probs = vent_state*torch.FloatTensor([
+            [1.0, 0.0],
+            [0.4, 0.6]
+        ]) + (1-vent_state)*torch.eye(2)
+        percoxyg_probs = torch.stack([percoxyg_probs]*2)
         return percoxyg_probs.to(self.device)
 
 
@@ -91,6 +117,19 @@ class MDPVentIntensity_minus1(MdpPyro):
         percoxyg_probs = torch.stack(2*[torch.stack([percoxyg_probs]*self.batch_size)])
         return percoxyg_probs.to(self.device)
 
+    def transition_vent_off(self):
+        """
+        ventilation state off
+        if ventilation was on: percent oxygen: normal -> lo w.p. 0.05
+        """
+        vent_state = torch.column_stack([self.state.vent_state]*4).reshape(self.batch_size,2,2)
+        percoxyg_probs = vent_state*torch.FloatTensor([
+            [1.0, 0.0],
+            [0.05, 0.95]
+        ]) + (1-vent_state)*torch.eye(2)
+        percoxyg_probs = torch.stack([percoxyg_probs]*2)
+        return percoxyg_probs.to(self.device)
+
 
 class MDPVentIntensity_minus2(MdpPyro):
     def __init__(self, init_state, device):
@@ -106,6 +145,19 @@ class MDPVentIntensity_minus2(MdpPyro):
             [0.0, 1.0]
         ])
         percoxyg_probs = torch.stack(2*[torch.stack([percoxyg_probs]*self.batch_size)])
+        return percoxyg_probs.to(self.device)
+
+    def transition_vent_off(self):
+        """
+        ventilation state off
+        if ventilation was on: percent oxygen: normal -> lo w.p. 0
+        """
+        vent_state = torch.column_stack([self.state.vent_state]*4).reshape(self.batch_size,2,2)
+        percoxyg_probs = vent_state*torch.FloatTensor([
+            [1.0, 0.0],
+            [0.0, 1.0]
+        ]) + (1-vent_state)*torch.eye(2)
+        percoxyg_probs = torch.stack([percoxyg_probs]*2)
         return percoxyg_probs.to(self.device)
 
 
@@ -134,6 +186,27 @@ class MDPAnitibioticIntensity2(MdpPyro):
 
         return hr_probs.to(self.device), sysbp_probs.to(self.device)
 
+    def transition_antibiotics_off(self):
+        """
+        antibiotics state off
+        if antibiotics was on: heart rate, sys bp: normal -> hi w.p. .6
+        """
+        antibiotic_state = torch.column_stack([self.state.antibiotic_state]*9).reshape(self.batch_size,3,3)
+        hr_probs = antibiotic_state*torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 0.4, 0.6],
+            [0.0, 0.0, 1.0]
+        ]) + (1-antibiotic_state)*torch.eye(3)
+        hr_probs = torch.stack(2*[hr_probs])
+        sysbp_probs = antibiotic_state*torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 0.4, 0.6],
+            [0.0, 0.0, 1.0]
+        ]) + (1-antibiotic_state)*torch.eye(3)
+        sysbp_probs = torch.stack(2*[sysbp_probs])
+        return hr_probs.to(self.device), sysbp_probs.to(self.device)
+
+
 class MDPAnitibioticIntensity1(MdpPyro):
     def __init__(self, init_state, device):
         super().__init__(init_state, device)
@@ -157,6 +230,26 @@ class MDPAnitibioticIntensity1(MdpPyro):
         ])
         sysbp_probs = torch.stack(2*[torch.stack([sysbp_probs]*self.batch_size)])
 
+        return hr_probs.to(self.device), sysbp_probs.to(self.device)
+
+    def transition_antibiotics_off(self):
+        """
+        antibiotics state off
+        if antibiotics was on: heart rate, sys bp: normal -> hi w.p. .4
+        """
+        antibiotic_state = torch.column_stack([self.state.antibiotic_state]*9).reshape(self.batch_size,3,3)
+        hr_probs = antibiotic_state*torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 0.6, 0.4],
+            [0.0, 0.0, 1.0]
+        ]) + (1-antibiotic_state)*torch.eye(3)
+        hr_probs = torch.stack(2*[hr_probs])
+        sysbp_probs = antibiotic_state*torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 0.6, 0.4],
+            [0.0, 0.0, 1.0]
+        ]) + (1-antibiotic_state)*torch.eye(3)
+        sysbp_probs = torch.stack(2*[sysbp_probs])
         return hr_probs.to(self.device), sysbp_probs.to(self.device)
 
 
@@ -185,6 +278,26 @@ class MDPAnitibioticIntensity_minus1(MdpPyro):
 
         return hr_probs.to(self.device), sysbp_probs.to(self.device)
 
+    def transition_antibiotics_off(self):
+        """
+        antibiotics state off
+        if antibiotics was on: heart rate, sys bp: normal -> hi w.p. 0.05
+        """
+        antibiotic_state = torch.column_stack([self.state.antibiotic_state]*9).reshape(self.batch_size,3,3)
+        hr_probs = antibiotic_state*torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 0.95, 0.05],
+            [0.0, 0.0, 1.0]
+        ]) + (1-antibiotic_state)*torch.eye(3)
+        hr_probs = torch.stack(2*[hr_probs])
+        sysbp_probs = antibiotic_state*torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 0.95, 0.05],
+            [0.0, 0.0, 1.0]
+        ]) + (1-antibiotic_state)*torch.eye(3)
+        sysbp_probs = torch.stack(2*[sysbp_probs])
+        return hr_probs.to(self.device), sysbp_probs.to(self.device)
+
 
 class MDPAnitibioticIntensity_minus2(MdpPyro):
     def __init__(self, init_state, device):
@@ -209,6 +322,26 @@ class MDPAnitibioticIntensity_minus2(MdpPyro):
         ])
         sysbp_probs = torch.stack(2*[torch.stack([sysbp_probs]*self.batch_size)])
 
+        return hr_probs.to(self.device), sysbp_probs.to(self.device)
+
+    def transition_antibiotics_off(self):
+        """
+        antibiotics state off
+        if antibiotics was on: heart rate, sys bp: normal -> hi w.p. 0.0
+        """
+        antibiotic_state = torch.column_stack([self.state.antibiotic_state]*9).reshape(self.batch_size,3,3)
+        hr_probs = antibiotic_state*torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ]) + (1-antibiotic_state)*torch.eye(3)
+        hr_probs = torch.stack(2*[hr_probs])
+        sysbp_probs = antibiotic_state*torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ]) + (1-antibiotic_state)*torch.eye(3)
+        sysbp_probs = torch.stack(2*[sysbp_probs])
         return hr_probs.to(self.device), sysbp_probs.to(self.device)
 
 
@@ -239,15 +372,37 @@ class MDPVasoIntensity2(MdpPyro):
         ])
         sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
         glucose_probs_diab = torch.FloatTensor([
-            [0.5, 0.0, 0.0, 0.5, 0.0], 
-            [0.0, 0.5, 0.0, 0.0, 0.5],
-            [0.0, 0.0, 0.5, 0.0, 0.5], 
-            [0.0, 0.0, 0.0, 0.5, 0.5], 
+            [0.3, 0.0, 0.0, 0.7, 0.0],
+            [0.0, 0.3, 0.0, 0.0, 0.7],
+            [0.0, 0.0, 0.3, 0.0, 0.7],
+            [0.0, 0.0, 0.0, 0.3, 0.7],
             [0.0, 0.0, 0.0, 0.0, 1.0]
         ])
         glucose_probs_no_diab = torch.eye(5)
         glucose_probs = torch.stack((torch.stack([glucose_probs_no_diab]*self.batch_size), torch.stack([glucose_probs_diab]*self.batch_size)))
         return sysbp_probs.to(self.device), glucose_probs.to(self.device)
+
+    def transition_vaso_off(self):
+        '''
+        vasopressor state off
+        if vasopressor was on:
+            for non-diabetics, sys bp: normal -> low, hi -> normal w.p. .5
+            for diabetics, blood pressure falls by 1 w.p. .3
+        '''
+        sysbp_probs_diab = torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.3, 0.7, 0.0],
+            [0.0, 0.3, 0.7]
+        ])
+        sysbp_probs_no_diab = torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.5, 0.5, 0.0],
+            [0.0, 0.5, 0.5]
+        ])
+        sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
+        vaso_state = torch.column_stack([self.state.vaso_state]*2*9).reshape(2,self.batch_size,3,3)
+        sysbp_probs = vaso_state*sysbp_probs + (1-vaso_state)*torch.eye(3)
+        return sysbp_probs.to(self.device)
 
 
 class MDPVasoIntensity1(MdpPyro):
@@ -277,15 +432,37 @@ class MDPVasoIntensity1(MdpPyro):
         ])
         sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
         glucose_probs_diab = torch.FloatTensor([
-            [0.5, 0.0, 0.5, 0.0, 0.0], 
-            [0.0, 0.5, 0.0, 0.5, 0.0],
-            [0.0, 0.0, 0.5, 0.0, 0.5], 
-            [0.0, 0.0, 0.0, 0.5, 0.5], 
+            [0.2, 0.0, 0.8, 0.0, 0.0],
+            [0.0, 0.2, 0.0, 0.8, 0.0],
+            [0.0, 0.0, 0.2, 0.0, 0.8],
+            [0.0, 0.0, 0.0, 0.2, 0.8],
             [0.0, 0.0, 0.0, 0.0, 1.0]
         ])
         glucose_probs_no_diab = torch.eye(5)
         glucose_probs = torch.stack((torch.stack([glucose_probs_no_diab]*self.batch_size), torch.stack([glucose_probs_diab]*self.batch_size)))
         return sysbp_probs.to(self.device), glucose_probs.to(self.device)
+
+    def transition_vaso_off(self):
+        '''
+        vasopressor state off
+        if vasopressor was on:
+            for non-diabetics, sys bp: normal -> low, hi -> normal w.p. .3
+            for diabetics, blood pressure falls by 1 w.p. .2
+        '''
+        sysbp_probs_diab = torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.2, 0.8, 0.0],
+            [0.0, 0.2, 0.8]
+        ])
+        sysbp_probs_no_diab = torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.3, 0.7, 0.0],
+            [0.0, 0.3, 0.7]
+        ])
+        sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
+        vaso_state = torch.column_stack([self.state.vaso_state]*2*9).reshape(2,self.batch_size,3,3)
+        sysbp_probs = vaso_state*sysbp_probs + (1-vaso_state)*torch.eye(3)
+        return sysbp_probs.to(self.device)
 
 
 class MDPVasoIntensity_minus1(MdpPyro):
@@ -314,15 +491,37 @@ class MDPVasoIntensity_minus1(MdpPyro):
         ])
         sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
         glucose_probs_diab = torch.FloatTensor([
-            [0.7, 0.3, 0.0, 0.0, 0.0],
-            [0.0, 0.7, 0.3, 0.0, 0.0],
-            [0.0, 0.0, 0.7, 0.3, 0.0],
-            [0.0, 0.0, 0.0, 0.7, 0.3],
+            [0.5, 0.5, 0.0, 0.0, 0.0],
+            [0.0, 0.5, 0.5, 0.0, 0.0],
+            [0.0, 0.0, 0.5, 0.5, 0.0],
+            [0.0, 0.0, 0.0, 0.5, 0.5],
             [0.0, 0.0, 0.0, 0.0, 1.0]
         ])
         glucose_probs_no_diab = torch.eye(5)
         glucose_probs = torch.stack((torch.stack([glucose_probs_no_diab]*self.batch_size), torch.stack([glucose_probs_diab]*self.batch_size)))
         return sysbp_probs.to(self.device), glucose_probs.to(self.device)
+
+    def transition_vaso_off(self):
+        '''
+        vasopressor state off
+        if vasopressor was on:
+            for non-diabetics, sys bp: normal -> low, hi -> normal w.p. 0.05
+            for diabetics, blood pressure falls by 1 w.p. 0.0
+        '''
+        sysbp_probs_diab = torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ])
+        sysbp_probs_no_diab = torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.05, 0.95, 0.0],
+            [0.0, 0.05, 0.95]
+        ])
+        sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
+        vaso_state = torch.column_stack([self.state.vaso_state]*2*9).reshape(2,self.batch_size,3,3)
+        sysbp_probs = vaso_state*sysbp_probs + (1-vaso_state)*torch.eye(3)
+        return sysbp_probs.to(self.device)
 
 
 class MDPVasoIntensity_minus2(MdpPyro):
@@ -351,12 +550,34 @@ class MDPVasoIntensity_minus2(MdpPyro):
         ])
         sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
         glucose_probs_diab = torch.FloatTensor([
-            [0.9, 0.1, 0.0, 0.0, 0.0],
-            [0.0, 0.9, 0.1, 0.0, 0.0],
-            [0.0, 0.0, 0.9, 0.1, 0.0],
-            [0.0, 0.0, 0.0, 0.9, 0.1],
+            [0.5, 0.5, 0.0, 0.0, 0.0],
+            [0.0, 0.5, 0.5, 0.0, 0.0],
+            [0.0, 0.0, 0.5, 0.5, 0.0],
+            [0.0, 0.0, 0.0, 0.5, 0.5],
             [0.0, 0.0, 0.0, 0.0, 1.0]
         ])
         glucose_probs_no_diab = torch.eye(5)
         glucose_probs = torch.stack((torch.stack([glucose_probs_no_diab]*self.batch_size), torch.stack([glucose_probs_diab]*self.batch_size)))
         return sysbp_probs.to(self.device), glucose_probs.to(self.device)
+
+    def transition_vaso_off(self):
+        '''
+        vasopressor state off
+        if vasopressor was on:
+            for non-diabetics, sys bp: normal -> low, hi -> normal w.p. 0.0
+            for diabetics, blood pressure falls by 1 w.p. 0.0
+        '''
+        sysbp_probs_diab = torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ])
+        sysbp_probs_no_diab = torch.FloatTensor([
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ])
+        sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
+        vaso_state = torch.column_stack([self.state.vaso_state]*2*9).reshape(2,self.batch_size,3,3)
+        sysbp_probs = vaso_state*sysbp_probs + (1-vaso_state)*torch.eye(3)
+        return sysbp_probs.to(self.device)
