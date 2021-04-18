@@ -48,8 +48,8 @@ class GumbelMaxModel(nn.Module):
             s0_diab = pyro.sample(
                 f"s0_diab_state",
                 dist.Categorical(logits=self.s0_diab_logits).mask(mini_batch_mask[:, 0]),
-                obs=mini_batch[:, 0, cols.index("diabetic_idx")]
-            ).to(torch.long)
+                infer={"enumerate": "parallel"}
+            )
             s0_hr = pyro.sample(
                 f"s0_hr",
                 dist.Categorical(logits=Vindex(self.s0_hr)[s0_diab, :])
