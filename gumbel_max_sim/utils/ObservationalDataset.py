@@ -7,7 +7,7 @@ cols = [
     "hr_state",
     "sysbp_state",
     "percoxyg_state",
-    "glucose_state",
+    "diabetic_idx",
     "antibiotic_state",
     "vaso_state",
     "vent_state",

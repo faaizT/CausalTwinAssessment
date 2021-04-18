@@ -273,10 +273,6 @@ class MdpPyro(MDP):
             f"x{t}_sysbp",
             dist.Categorical(probs=Vindex(hr_sysbp_probs)[self.state.sysbp_state, :]).mask(mini_batch_mask[:, t]),
             obs=mini_batch[:, t, cols.index("sysbp_state")])
-        xt_glucose_state = pyro.sample(
-            f"x{t}_glucose",
-            dist.Categorical(probs=Vindex(glucose_probs)[self.state.glucose_state, :]).mask(mini_batch_mask[:, t]),
-            obs=mini_batch[:, t, cols.index("glucose_state")])
         xt_percoxyg_state = pyro.sample(
             f"x{t}_percoxyg",
             dist.Categorical(probs=Vindex(percoxyg_probs)[self.state.percoxyg_state, :]).mask(mini_batch_mask[:, t]),
