@@ -473,55 +473,33 @@ class MDPVasoIntensity_minus1(MdpPyro):
         """
         vasopressor state on
         for non-diabetic:
-            sys bp: low -> normal w.p. .3, normal -> high w.p. .3,
+            sys bp: low -> normal, normal -> hi w.p. .7
         for diabetic:
-            raise blood pressure: normal -> hi w.p. .4,
-                lo -> normal w.p. .2, lo -> hi w.p. .2
-            raise blood glucose by 1 w.p. .5
+            raise blood pressure: normal -> hi w.p. .9,
+                lo -> normal w.p. .5, lo -> hi w.p. .4
+            raise blood glucose by 1 w.p. .3
         """
         sysbp_probs_diab = torch.FloatTensor([
-            [0.6, 0.2, 0.2],
-            [0.0, 0.6, 0.4],
+            [0.1, 0.5, 0.4],
+            [0.0, 0.1, 0.9],
             [0.0, 0.0, 1.0]
         ])
         sysbp_probs_no_diab = torch.FloatTensor([
-            [0.7, 0.3, 0.0],
-            [0.0, 0.7, 0.3],
+            [0.3, 0.7, 0.0],
+            [0.0, 0.3, 0.7],
             [0.0, 0.0, 1.0]
         ])
         sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
         glucose_probs_diab = torch.FloatTensor([
-            [0.5, 0.5, 0.0, 0.0, 0.0],
-            [0.0, 0.5, 0.5, 0.0, 0.0],
-            [0.0, 0.0, 0.5, 0.5, 0.0],
-            [0.0, 0.0, 0.0, 0.5, 0.5],
+            [0.7, 0.3, 0.0, 0.0, 0.0],
+            [0.0, 0.7, 0.3, 0.0, 0.0],
+            [0.0, 0.0, 0.7, 0.3, 0.0],
+            [0.0, 0.0, 0.0, 0.7, 0.3],
             [0.0, 0.0, 0.0, 0.0, 1.0]
         ])
         glucose_probs_no_diab = torch.eye(5)
         glucose_probs = torch.stack((torch.stack([glucose_probs_no_diab]*self.batch_size), torch.stack([glucose_probs_diab]*self.batch_size)))
         return sysbp_probs.to(self.device), glucose_probs.to(self.device)
-
-    def transition_vaso_off(self):
-        '''
-        vasopressor state off
-        if vasopressor was on:
-            for non-diabetics, sys bp: normal -> low, hi -> normal w.p. 0.05
-            for diabetics, blood pressure falls by 1 w.p. 0.0
-        '''
-        sysbp_probs_diab = torch.FloatTensor([
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0]
-        ])
-        sysbp_probs_no_diab = torch.FloatTensor([
-            [1.0, 0.0, 0.0],
-            [0.05, 0.95, 0.0],
-            [0.0, 0.05, 0.95]
-        ])
-        sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
-        vaso_state = torch.column_stack([self.state.vaso_state]*2*9).reshape(2,self.batch_size,3,3)
-        sysbp_probs = vaso_state*sysbp_probs + (1-vaso_state)*torch.eye(3)
-        return sysbp_probs.to(self.device)
 
 
 class MDPVasoIntensity_minus2(MdpPyro):
@@ -532,52 +510,30 @@ class MDPVasoIntensity_minus2(MdpPyro):
         """
         vasopressor state on
         for non-diabetic:
-            sys bp: low -> normal w.p. .1, normal -> high w.p. .1,
+            sys bp: low -> normal, normal -> hi w.p. .7
         for diabetic:
-            raise blood pressure: normal -> hi w.p. .2,
-                lo -> normal w.p. .1, lo -> hi w.p. .1
-            raise blood glucose by 1 w.p. .5
+            raise blood pressure: normal -> hi w.p. .9,
+                lo -> normal w.p. .5, lo -> hi w.p. .4
+            raise blood glucose by 1 w.p. .2
         """
         sysbp_probs_diab = torch.FloatTensor([
-            [0.8, 0.1, 0.1],
-            [0.0, 0.8, 0.2],
+            [0.1, 0.5, 0.4],
+            [0.0, 0.1, 0.9],
             [0.0, 0.0, 1.0]
         ])
         sysbp_probs_no_diab = torch.FloatTensor([
-            [0.9, 0.1, 0.0],
-            [0.0, 0.9, 0.1],
+            [0.3, 0.7, 0.0],
+            [0.0, 0.3, 0.7],
             [0.0, 0.0, 1.0]
         ])
         sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
         glucose_probs_diab = torch.FloatTensor([
-            [0.5, 0.5, 0.0, 0.0, 0.0],
-            [0.0, 0.5, 0.5, 0.0, 0.0],
-            [0.0, 0.0, 0.5, 0.5, 0.0],
-            [0.0, 0.0, 0.0, 0.5, 0.5],
+            [0.8, 0.2, 0.0, 0.0, 0.0],
+            [0.0, 0.8, 0.2, 0.0, 0.0],
+            [0.0, 0.0, 0.8, 0.2, 0.0],
+            [0.0, 0.0, 0.0, 0.8, 0.2],
             [0.0, 0.0, 0.0, 0.0, 1.0]
         ])
         glucose_probs_no_diab = torch.eye(5)
         glucose_probs = torch.stack((torch.stack([glucose_probs_no_diab]*self.batch_size), torch.stack([glucose_probs_diab]*self.batch_size)))
         return sysbp_probs.to(self.device), glucose_probs.to(self.device)
-
-    def transition_vaso_off(self):
-        '''
-        vasopressor state off
-        if vasopressor was on:
-            for non-diabetics, sys bp: normal -> low, hi -> normal w.p. 0.0
-            for diabetics, blood pressure falls by 1 w.p. 0.0
-        '''
-        sysbp_probs_diab = torch.FloatTensor([
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0]
-        ])
-        sysbp_probs_no_diab = torch.FloatTensor([
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0]
-        ])
-        sysbp_probs = torch.stack((torch.stack([sysbp_probs_no_diab]*self.batch_size), torch.stack([sysbp_probs_diab]*self.batch_size)))
-        vaso_state = torch.column_stack([self.state.vaso_state]*2*9).reshape(2,self.batch_size,3,3)
-        sysbp_probs = vaso_state*sysbp_probs + (1-vaso_state)*torch.eye(3)
-        return sysbp_probs.to(self.device)
