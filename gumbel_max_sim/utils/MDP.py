@@ -221,17 +221,17 @@ class MdpPyro(MDP):
         percoxyg_probs = Vindex(percoxyg_probs)[self.state.diabetic_idx, torch.arange(self.batch_size), self.state.percoxyg_state.to(torch.long), :]
         return hr_probs, sysbp_probs, glucose_probs, percoxyg_probs
 
-    def transition(self, action, mini_batch_mask, t):
+    def transition(self, action, mini_batch, mini_batch_mask, t):
         hr_probs, sysbp_probs, glucose_probs, percoxyg_probs = self.transition_probs(action)
         hr_state = pyro.sample(
             f"s{t}_hr",
             dist.Categorical(probs=hr_probs).mask(mini_batch_mask[:, t]),
-            infer={"enumerate": "parallel"})
+            obs=mini_batch[:, t, cols.index("hr_state")]).to(torch.long)
         self.state.hr_state = hr_state
         sysbp_state = pyro.sample(
             f"s{t}_sysbp",
             dist.Categorical(probs=sysbp_probs).mask(mini_batch_mask[:, t]),
-            infer={"enumerate": "parallel"})
+            obs=mini_batch[:, t, cols.index("sysbp_state")]).to(torch.long)
         self.state.sysbp_state = sysbp_state
         glucose_state = pyro.sample(
             f"s{t}_glucose",
@@ -241,39 +241,8 @@ class MdpPyro(MDP):
         percoxyg_state = pyro.sample(
             f"s{t}_percoxyg",
             dist.Categorical(probs=percoxyg_probs).mask(mini_batch_mask[:, t]),
-            infer={"enumerate": "parallel"})
+            obs=mini_batch[:, t, cols.index("percoxyg_state")]).to(torch.long)
         self.state.percoxyg_state = percoxyg_state
         self.state.antibiotic_state = action.antibiotic
         self.state.vent_state = action.ventilation
         self.state.vaso_state = action.vasopressors
-
-
-    def emission(self, mini_batch, mini_batch_mask, t):
-        hr_sysbp_probs = torch.FloatTensor([
-            [0.95, 0.05, 0.00],
-            [0.05, 0.90, 0.05],
-            [0.00, 0.05, 0.95]
-        ])
-        percoxyg_probs = torch.FloatTensor([
-            [0.95, 0.05],
-            [0.05, 0.95]
-        ])
-        glucose_probs = torch.FloatTensor([
-            [0.95, 0.05, 0.00, 0.00, 0.00],
-            [0.05, 0.90, 0.05, 0.00, 0.00],
-            [0.00, 0.05, 0.90, 0.05, 0.00],
-            [0.00, 0.00, 0.05, 0.90, 0.05],
-            [0.00, 0.00, 0.00, 0.05, 0.95]
-        ])
-        xt_hr_state = pyro.sample(
-            f"x{t}_hr",
-            dist.Categorical(probs=Vindex(hr_sysbp_probs)[self.state.hr_state, :]).mask(mini_batch_mask[:, t]),
-            obs=mini_batch[:, t, cols.index("hr_state")])
-        xt_sysbp_state = pyro.sample(
-            f"x{t}_sysbp",
-            dist.Categorical(probs=Vindex(hr_sysbp_probs)[self.state.sysbp_state, :]).mask(mini_batch_mask[:, t]),
-            obs=mini_batch[:, t, cols.index("sysbp_state")])
-        xt_percoxyg_state = pyro.sample(
-            f"x{t}_percoxyg",
-            dist.Categorical(probs=Vindex(percoxyg_probs)[self.state.percoxyg_state, :]).mask(mini_batch_mask[:, t]),
-            obs=mini_batch[:, t, cols.index("percoxyg_state")])

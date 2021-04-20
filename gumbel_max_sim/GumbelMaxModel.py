@@ -54,14 +54,14 @@ class GumbelMaxModel(nn.Module):
                 f"s0_hr",
                 dist.Categorical(logits=Vindex(self.s0_hr)[s0_diab, :])
                 .mask(mini_batch_mask[:, 0]),
-                infer={"enumerate": "parallel"}
-            )
+                obs=mini_batch[:, 0, cols.index("hr_state")]
+            ).to(torch.long)
             s0_sysbp = pyro.sample(
                 f"s0_sysbp",
                 dist.Categorical(logits=Vindex(self.s0_sysbp)[s0_diab, :])
                 .mask(mini_batch_mask[:, 0]),
-                infer={"enumerate": "parallel"}
-            )
+                obs=mini_batch[:, 0, cols.index("sysbp_state")]
+            ).to(torch.long)
             s0_glucose = pyro.sample(
                 f"s0_glucose",
                 dist.Categorical(logits=Vindex(self.s0_glucose)[s0_diab, :])
@@ -72,12 +72,11 @@ class GumbelMaxModel(nn.Module):
                 f"s0_percoxyg",
                 dist.Categorical(logits=Vindex(self.s0_percoxyg)[s0_diab, :])
                 .mask(mini_batch_mask[:, 0]),
-                infer={"enumerate": "parallel"}
-            )
+                obs=mini_batch[:, 0, cols.index("percoxyg_state")]
+            ).to(torch.long)
             a_prev = Action(action_idx=torch.zeros(len(mini_batch)))
             state = State(hr_state=s0_hr, sysbp_state=s0_sysbp, percoxyg_state=s0_percoxyg, glucose_state=s0_glucose, antibiotic_state=a_prev.antibiotic, vaso_state=a_prev.vasopressors, vent_state=a_prev.ventilation, diabetic_idx=s0_diab)
             mdp = get_simulator(name=self.simulator_name, init_state=state, device=self.device)
-            mdp.emission(mini_batch, mini_batch_mask, t=0)
             for t in pyro.markov(range(T_max-1)):
                 at = pyro.sample(
                     f"a{t}",
@@ -95,6 +94,5 @@ class GumbelMaxModel(nn.Module):
                     obs=actions_obs[:, t].reshape(-1),
                 ).expand(len(mini_batch))
                 action = Action(action_idx=at)
-                mdp.transition(action, mini_batch_mask, t + 1)
-                mdp.emission(mini_batch, mini_batch_mask, t + 1)
+                mdp.transition(action, mini_batch, mini_batch_mask, t + 1)
                 state = mdp.state
