@@ -8,7 +8,7 @@ import pyro.contrib.examples.polyphonic_data_loader as poly
 from pulse.utils.MIMICDataset import dummy_cols as cols, action_cols
 from simple_model.Policy import Policy
 from pulse.utils.PulseInterface import *
-from gumbel_max_sim.utils.Networks import Combiner
+from max_likelihood.utils.HelperNetworks import Combiner
 
 
 class PulseModel(nn.Module):
@@ -22,7 +22,7 @@ class PulseModel(nn.Module):
             input_dim=st_vec_dim,
             hidden_1_dim=20,
             hidden_2_dim=20,
-            output_dim=n_act,
+            output_dim=1,
             use_cuda=use_cuda,
         )
         self.rnn = nn.RNN(
@@ -35,7 +35,7 @@ class PulseModel(nn.Module):
             dropout=rnn_dropout_rate,
         )
         self.h_0 = nn.Parameter(torch.zeros(1, 1, rnn_dim))
-        self.combiner = Combiner(z_dim=st_vec_dim, rnn_dim=rnn_dim, use_cuda=use_cuda)
+        self.combiner = Combiner(z_dim=st_vec_dim, rnn_dim=rnn_dim, out_dim=st_vec_dim)
         self.s_q_0 = nn.Parameter(torch.zeros(st_vec_dim))
         if use_cuda:
             self.cuda()
@@ -52,7 +52,7 @@ class PulseModel(nn.Module):
 
     def transition(self, pool, at):
         for p in pool.get_patients():
-            p.actions.append(at[p.id, 0].detach().item())
+            p.actions.append(at[p.id].detach().item())
         pool.advance_time_s(60)
 
     def pull_data(self, pool):
@@ -69,9 +69,10 @@ class PulseModel(nn.Module):
             self.emission(st_hr, 0, mini_batch, mini_batch_mask)
             pool = self.create_pool(st_hr)
             for t in range(T_max - 1):
+                action = self.policy(st_hr.unsqueeze(1)).squeeze()
                 at = pyro.sample(f"a{t}", 
-                    dist.Normal(self.policy(st_hr), 0.001).mask(mini_batch_mask[:,t+1]), 
-                    obs=actions_obs[:,t,:]
+                    dist.Normal(action, 0.001).mask(mini_batch_mask[:,t+1]), 
+                    obs=actions_obs[:,t,action_cols.index("median_dose_vaso")]
                 )
                 self.transition(pool, at)
                 st_hr = pyro.sample(f"s{t+1}_hr", dist.Normal(self.pull_data(pool), 0.01).mask(mini_batch_mask[:, t+1]))
@@ -87,15 +88,10 @@ class PulseModel(nn.Module):
         rnn_output, _ = self.rnn(mini_batch_reversed, h_0_contig)
         # reverse the time-ordering in the hidden state and un-pack it
         rnn_output = poly.pad_and_reverse(rnn_output, mini_batch_seq_lengths)
-        st_prev = self.s_q_0.expand(mini_batch.size(0), self.s_q_0.size(0)).float()
+        st_prev = self.s_q_0.expand(mini_batch.size(0), self.s_q_0.size(0))
         pyro.module("pulse", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
             for t in range(T_max):
-                st_hr = pyro.sample(f"s{t}_hr", dist.Normal(self.combiner(st_prev, rnn_output[:, 0, :]), 1).mask(mini_batch_mask[:,t]))
-                st_prev = st_hr
-
-
-
-            
-
-        
+                st_loc, st_scale = self.combiner(st_prev, rnn_output[:, t, :])
+                st_hr = pyro.sample(f"s{t}_hr", dist.Normal(st_loc.squeeze(), torch.exp(st_scale).squeeze()+0.001).mask(mini_batch_mask[:,t]))
+                st_prev = st_hr.unsqueeze(1)
