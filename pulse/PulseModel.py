@@ -87,7 +87,7 @@ class PulseModel(nn.Module):
         rnn_output, _ = self.rnn(mini_batch_reversed, h_0_contig)
         # reverse the time-ordering in the hidden state and un-pack it
         rnn_output = poly.pad_and_reverse(rnn_output, mini_batch_seq_lengths)
-        st_prev = self.s_q_0.expand(mini_batch.size(0), 1)
+        st_prev = self.s_q_0.expand(mini_batch.size(0), self.s_q_0.size(0)).float()
         pyro.module("pulse", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
             for t in range(T_max):
