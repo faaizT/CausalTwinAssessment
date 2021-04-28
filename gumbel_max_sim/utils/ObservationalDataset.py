@@ -14,7 +14,7 @@ cols = [
 
 
 class ObservationalDataset(Dataset):
-    def __init__(self, csv_file, xt_columns, action_columns):
+    def __init__(self, csv_file, xt_columns, action_columns, id_column="id"):
         """
         Args:
             csv_file (string): Path to the csv file with annotations.
@@ -29,7 +29,7 @@ class ObservationalDataset(Dataset):
         self.lengths = []
         length_counter = 0
         for i in range(len(data)):
-            if i > 0 and data.iloc[i]["id"] == data.iloc[i - 1]["id"]:
+            if i > 0 and data.iloc[i][id_column] == data.iloc[i - 1][id_column]:
                 trajectory.append(
                     torch.zeros(len(xt_columns))
                     if -1 in data_filtered.iloc[i].values
