@@ -20,6 +20,8 @@ class Patient:
         self.id = idx
         self.actions = []
         self.sex = 0
+        self.weight = np.random.normal(70, 1)
+        self.age = np.random.normal(55, 10)
         self.hr = np.random.normal(70, 5)
     
     def advance_time(self, time):

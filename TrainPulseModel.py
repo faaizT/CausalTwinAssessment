@@ -11,7 +11,7 @@ import pyro.distributions as dist
 import pyro.contrib.examples.polyphonic_data_loader as poly
 from pulse.PulseModel import PulseModel
 from gumbel_max_sim.utils.ObservationalDataset import ObservationalDataset
-from pulse.utils.MIMICDataset import dummy_cols as cols, action_cols
+from pulse.utils.MIMICDataset import dummy_cols as cols, dummy_static_cols as static_cols, action_cols
 from pyro.infer import SVI, Trace_ELBO
 import torch
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -38,17 +38,18 @@ def train(svi, train_loader, use_cuda=False):
     epoch_loss = 0.0
     # do a training epoch over each mini-batch x returned
     # by the data loader
-    for mini_batch, actions, lengths in train_loader:
+    for mini_batch, static_data, actions, lengths in train_loader:
         # if on GPU put mini-batch into CUDA memory
         if use_cuda:
             mini_batch = mini_batch.cuda()
+            static_data = static_data.cuda()
             actions = actions.cuda()
             lengths = lengths.cuda()
         mini_batch, mini_batch_reversed, mini_batch_mask, mini_batch_seq_lengths \
             = poly.get_mini_batch(torch.arange(mini_batch.size(0)), mini_batch, lengths, cuda=use_cuda)
         # do ELBO gradient and accumulate loss
         epoch_loss += svi.step(
-            mini_batch.float(), actions.float(), mini_batch_mask.float(), mini_batch_seq_lengths, mini_batch_reversed.float()
+            mini_batch.float(), static_data.float(), actions.float(), mini_batch_mask.float(), mini_batch_seq_lengths, mini_batch_reversed.float()
         )
     # return epoch loss
     normalizer_train = len(train_loader.dataset)
@@ -60,17 +61,18 @@ def evaluate(svi, test_loader, use_cuda=False):
     # initialize loss accumulator
     test_loss = 0.0
     # compute the loss over the entire test set
-    for mini_batch, actions, lengths in test_loader:
+    for mini_batch, static_data, actions, lengths in test_loader:
         # if on GPU put mini-batch into CUDA memory
         if use_cuda:
             mini_batch = mini_batch.cuda()
+            static_data = static_data.cuda()
             actions = actions.cuda()
             lengths = lengths.cuda()
         mini_batch, mini_batch_reversed, mini_batch_mask, mini_batch_seq_lengths \
             = poly.get_mini_batch(torch.arange(mini_batch.size(0)), mini_batch, lengths, cuda=use_cuda)
         # compute ELBO estimate and accumulate loss
         test_loss += svi.evaluate_loss(
-            mini_batch.float(), actions.float(), mini_batch_mask.float(), mini_batch_seq_lengths, mini_batch_reversed.float()
+            mini_batch.float(), static_data.float(), actions.float(), mini_batch_mask.float(), mini_batch_seq_lengths, mini_batch_reversed.float()
         )
     normalizer_test = len(test_loader.dataset)
     total_epoch_loss_test = test_loss / normalizer_test
@@ -90,7 +92,7 @@ def main(args):
         handlers=[logging.FileHandler(log_file_name), logging.StreamHandler()],
     )
     observational_dataset = ObservationalDataset(
-        args.path, xt_columns=cols, action_columns=action_cols, id_column="icustay_id"
+        args.path, xt_columns=cols, action_columns=action_cols, id_column="icustay_id", static_cols=static_cols
     )
     pyro.clear_param_store()
     validation_split = 0.20

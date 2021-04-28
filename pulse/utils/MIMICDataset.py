@@ -55,6 +55,9 @@ cols = ['bloc',
         'cumulated_balance']
 
 dummy_cols = ['HR']
+dummy_static_cols = ['gender']
+
+static_cols = ['gender', 'age', 'Weight_kg']
 
 action_cols = ['input_1hourly', 
                'median_dose_vaso']

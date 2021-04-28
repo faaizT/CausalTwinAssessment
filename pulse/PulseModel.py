@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torch.distributions import constraints
 import pyro.contrib.examples.polyphonic_data_loader as poly
-from pulse.utils.MIMICDataset import dummy_cols as cols, action_cols
+from pulse.utils.MIMICDataset import dummy_cols as cols, dummy_static_cols as static_cols, action_cols
 from simple_model.Policy import Policy
 from pulse.utils.PulseInterface import *
 from max_likelihood.utils.HelperNetworks import Combiner
@@ -19,7 +19,7 @@ class PulseModel(nn.Module):
         self.s0_hr_mean = nn.Parameter(torch.zeros(1))
         self.s0_hr_var = nn.Parameter(torch.ones(1))
         self.policy = Policy(
-            input_dim=st_vec_dim,
+            input_dim=st_vec_dim + 1,
             hidden_1_dim=20,
             hidden_2_dim=20,
             output_dim=1,
@@ -34,20 +34,23 @@ class PulseModel(nn.Module):
             num_layers=1,
             dropout=rnn_dropout_rate,
         )
+        self.s0_gender = nn.Parameter(torch.zeros(2))
         self.h_0 = nn.Parameter(torch.zeros(1, 1, rnn_dim))
-        self.combiner = Combiner(z_dim=st_vec_dim, rnn_dim=rnn_dim, out_dim=st_vec_dim)
+        self.combiner = Combiner(z_dim=st_vec_dim+1, rnn_dim=rnn_dim, out_dim=st_vec_dim)
         self.s_q_0 = nn.Parameter(torch.zeros(st_vec_dim))
         if use_cuda:
             self.cuda()
     
-    def emission(self, st_hr, t, mini_batch, mini_batch_mask):
+    def emission(self, pool, t, mini_batch, mini_batch_mask):
+        st_hr = self.pull_data(pool)
         xt_hr = pyro.sample(f"x{t}_hr", dist.Normal(st_hr, 0.001).mask(mini_batch_mask[:,t]), obs=mini_batch[:,t,cols.index("HR")])
 
-    def create_pool(self, st):
+    def create_pool(self, st_gender, st_hr):
         pool = PulsePhysiologyEnginePool()
-        for i in range(st.size(0)):
+        for i in range(st_gender.size(0)):
             p1 = pool.create_patient(i)
-            p1.hr = st[i].detach().item()
+            p1.hr = st_hr[i].detach().item()
+            p1.sex = st_gender[i].detach().item()
         return pool
 
     def transition(self, pool, at):
@@ -61,24 +64,25 @@ class PulseModel(nn.Module):
             data.append(p.results())
         return torch.FloatTensor(data)
     
-    def model(self, mini_batch, actions_obs, mini_batch_mask, mini_batch_seq_lengths, mini_batch_reversed):
+    def model(self, mini_batch, static_data, actions_obs, mini_batch_mask, mini_batch_seq_lengths, mini_batch_reversed):
         T_max = mini_batch.size(1)
         pyro.module("pulse", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
+            st_gender = pyro.sample(f"s0_gender", dist.Categorical(logits=self.s0_gender), obs=static_data[:,static_cols.index("gender")])
             st_hr = pyro.sample(f"s0_hr", dist.Normal(self.s0_hr_mean, self.s0_hr_var))
-            self.emission(st_hr, 0, mini_batch, mini_batch_mask)
-            pool = self.create_pool(st_hr)
+            pool = self.create_pool(st_gender, st_hr)
+            self.emission(pool, 0, mini_batch, mini_batch_mask)
             for t in range(T_max - 1):
-                action = self.policy(st_hr.unsqueeze(1)).squeeze()
+                action = self.policy(torch.column_stack((st_hr.unsqueeze(1), static_data))).squeeze()
                 at = pyro.sample(f"a{t}", 
                     dist.Normal(action, 0.001).mask(mini_batch_mask[:,t+1]), 
                     obs=actions_obs[:,t,action_cols.index("median_dose_vaso")]
                 )
                 self.transition(pool, at)
                 st_hr = pyro.sample(f"s{t+1}_hr", dist.Normal(self.pull_data(pool), 0.01).mask(mini_batch_mask[:, t+1]))
-                self.emission(st_hr, t+1, mini_batch, mini_batch_mask)
+                self.emission(pool, t+1, mini_batch, mini_batch_mask)
             
-    def guide(self, mini_batch, actions_obs, mini_batch_mask, mini_batch_seq_lengths, mini_batch_reversed):
+    def guide(self, mini_batch, static_data, actions_obs, mini_batch_mask, mini_batch_seq_lengths, mini_batch_reversed):
         T_max = mini_batch.size(1)
         # if on gpu we need the fully broadcast view of the rnn initial state
         # to be in contiguous gpu memory
@@ -88,10 +92,10 @@ class PulseModel(nn.Module):
         rnn_output, _ = self.rnn(mini_batch_reversed, h_0_contig)
         # reverse the time-ordering in the hidden state and un-pack it
         rnn_output = poly.pad_and_reverse(rnn_output, mini_batch_seq_lengths)
-        st_prev = self.s_q_0.expand(mini_batch.size(0), self.s_q_0.size(0))
+        st_prev = torch.column_stack((self.s_q_0.expand(mini_batch.size(0), self.s_q_0.size(0)), static_data))
         pyro.module("pulse", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
             for t in range(T_max):
                 st_loc, st_scale = self.combiner(st_prev, rnn_output[:, t, :])
                 st_hr = pyro.sample(f"s{t}_hr", dist.Normal(st_loc.squeeze(), torch.exp(st_scale).squeeze()+0.001).mask(mini_batch_mask[:,t]))
-                st_prev = st_hr.unsqueeze(1)
+                st_prev = torch.column_stack((st_hr.unsqueeze(1), static_data))

@@ -14,7 +14,7 @@ cols = [
 
 
 class ObservationalDataset(Dataset):
-    def __init__(self, csv_file, xt_columns, action_columns, id_column="id"):
+    def __init__(self, csv_file, xt_columns, action_columns, id_column="id", static_cols=None):
         """
         Args:
             csv_file (string): Path to the csv file with annotations.
@@ -22,6 +22,10 @@ class ObservationalDataset(Dataset):
         data = pd.read_csv(csv_file)
         data_filtered = data[xt_columns]
         actions_data = data[action_columns]
+        self.static_cols = static_cols
+        if static_cols is not None:
+            static_data = data[static_cols]
+            self.static_data = []
         self.ehr_data = []
         self.ehr_action_data = []
         trajectory = []
@@ -61,6 +65,8 @@ class ObservationalDataset(Dataset):
                     length_counter = 1
                 else:
                     length_counter = 0
+                if static_cols is not None:
+                    self.static_data.append(torch.tensor(static_data.iloc[i].values))
         self.ehr_data.append(torch.stack(trajectory))
         self.ehr_action_data.append(torch.stack(actions))
         self.lengths.append(torch.tensor(length_counter))
@@ -75,4 +81,7 @@ class ObservationalDataset(Dataset):
         sample = self.ehr_data[idx]
         actions = self.ehr_action_data[idx]
         lengths = self.lengths[idx]
-        return sample, actions, lengths
+        if self.static_cols is None:
+            return sample, actions, lengths
+        static_data = self.static_data[idx]
+        return sample, static_data, actions, lengths
