@@ -54,5 +54,7 @@ cols = ['bloc',
         'output_1hourly',
         'cumulated_balance']
 
+dummy_cols = ['HR']
+
 action_cols = ['input_1hourly', 
                'median_dose_vaso']
