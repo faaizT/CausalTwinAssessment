@@ -9,9 +9,9 @@ import wandb
 import pyro
 import pyro.distributions as dist
 import pyro.contrib.examples.polyphonic_data_loader as poly
-from pulse.PulseModel import PulseModel
+from pulse_simulator.PulseModel import PulseModel
 from gumbel_max_sim.utils.ObservationalDataset import ObservationalDataset
-from pulse.utils.MIMICDataset import dummy_cols as cols, dummy_static_cols as static_cols, action_cols
+from pulse_simulator.utils.MIMICDataset import dummy_cols as cols, dummy_static_cols as static_cols, action_cols
 from pyro.infer import SVI, Trace_ELBO
 import torch
 from torch.utils.data.sampler import SubsetRandomSampler
@@ -36,6 +36,7 @@ def save_states(model, exportdir, iter_num=None, save_final=False):
 def train(svi, train_loader, use_cuda=False):
     # initialize loss accumulator
     epoch_loss = 0.0
+    i = 0
     # do a training epoch over each mini-batch x returned
     # by the data loader
     for mini_batch, static_data, actions, lengths in train_loader:
@@ -48,9 +49,14 @@ def train(svi, train_loader, use_cuda=False):
         mini_batch, mini_batch_reversed, mini_batch_mask, mini_batch_seq_lengths \
             = poly.get_mini_batch(torch.arange(mini_batch.size(0)), mini_batch, lengths, cuda=use_cuda)
         # do ELBO gradient and accumulate loss
-        epoch_loss += svi.step(
+        loss = svi.step(
             mini_batch.float(), static_data.float(), actions.float(), mini_batch_mask.float(), mini_batch_seq_lengths, mini_batch_reversed.float()
         )
+        epoch_loss += loss
+        logging.info(
+            "[minibatch %03d] minibatch training loss: %.4f" % (i, loss)
+        )
+        i += 1
     # return epoch loss
     normalizer_train = len(train_loader.dataset)
     total_epoch_loss_train = epoch_loss / normalizer_train
@@ -95,8 +101,8 @@ def main(args):
         args.path, xt_columns=cols, action_columns=action_cols, id_column="icustay_id", static_cols=static_cols
     )
     pyro.clear_param_store()
-    validation_split = 0.20
-    test_split = 0.20
+    validation_split = 0.05
+    test_split = 0.05
     shuffle_dataset = True
     dataset_size = len(observational_dataset)
     indices = list(range(dataset_size))
@@ -115,13 +121,13 @@ def main(args):
     test_sampler = SubsetRandomSampler(test_indices)
 
     train_loader = torch.utils.data.DataLoader(
-        observational_dataset, batch_size=16, sampler=train_sampler
+        observational_dataset, batch_size=1, sampler=train_sampler, num_workers=4
     )
     validation_loader = torch.utils.data.DataLoader(
-        observational_dataset, batch_size=16, sampler=valid_sampler
+        observational_dataset, batch_size=1, sampler=valid_sampler, num_workers=4
     )
     test_loader = torch.utils.data.DataLoader(
-        observational_dataset, batch_size=16, sampler=test_sampler
+        observational_dataset, batch_size=1, sampler=test_sampler, num_workers=4
     )
     adam_params = {
         "lr": args.lr,

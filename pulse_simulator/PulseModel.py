@@ -5,11 +5,26 @@ import torch
 from torch import nn
 from torch.distributions import constraints
 import pyro.contrib.examples.polyphonic_data_loader as poly
-from pulse.utils.MIMICDataset import dummy_cols as cols, dummy_static_cols as static_cols, action_cols
+from pulse_simulator.utils.MIMICDataset import dummy_cols as cols, dummy_static_cols as static_cols, action_cols
 from simple_model.Policy import Policy
-from pulse.utils.PulseInterface import *
 from max_likelihood.utils.HelperNetworks import Combiner
+from pulse.cpm.PulsePhysiologyEnginePool import PulsePhysiologyEnginePool
+from pulse.cpm.PulsePhysiologyEngine import PulsePhysiologyEngine
+from pulse.cdm.engine import SEDataRequestManager, SEDataRequest, \
+                             SEAdvanceTime
+from pulse.cdm.patient import SEPatientConfiguration, SEPatient, eSex
+from pulse.cdm.patient_actions import SEHemorrhage, eHemorrhageType, \
+    SESubstanceBolus, eSubstance_Administration, SESubstanceCompoundInfusion
+from pulse.cdm.scalars import MassPerVolumeUnit, TimeUnit, VolumeUnit, MassUnit, PressureUnit, FrequencyUnit, \
+    VolumePerTimeUnit
+from pulse_simulator.utils.PatientUtils import reset_extreme_readings
+import logging
 
+
+data_requests = [
+    SEDataRequest.create_physiology_request("HeartRate", unit="1/min"),
+]
+data_req_mgr = SEDataRequestManager(data_requests)
 
 class PulseModel(nn.Module):
     def __init__(self, rnn_dim=40, rnn_dropout_rate=0.0, st_vec_dim=1, n_act=2, use_cuda=False):
@@ -42,15 +57,28 @@ class PulseModel(nn.Module):
             self.cuda()
     
     def emission(self, pool, t, mini_batch, mini_batch_mask):
-        st_hr = self.pull_data(pool)
-        xt_hr = pyro.sample(f"x{t}_hr", dist.Normal(st_hr, 0.001).mask(mini_batch_mask[:,t]), obs=mini_batch[:,t,cols.index("HR")])
+        results = []
+        active = torch.ones(mini_batch_mask.size(0))
+        for e in pool.get_engines().values():
+            if e.is_active:
+                results.append(e.data_requested.values['HeartRate (1/min)'])
+            else:
+                results.append(-1.0)
+                active[e.get_id()-1] = 0
+        st_hr = torch.tensor(results)
+        xt_hr = pyro.sample(f"x{t}_hr", dist.Normal(st_hr, 0.001).mask(mini_batch_mask[:,t]*active), obs=mini_batch[:,t,cols.index("HR")])
 
     def create_pool(self, st_gender, st_hr):
         pool = PulsePhysiologyEnginePool()
         for i in range(st_gender.size(0)):
-            p1 = pool.create_patient(i)
-            p1.hr = st_hr[i].detach().item()
-            p1.sex = st_gender[i].detach().item()
+            p1 = pool.create_engine(i+1)
+            pe1.engine_initialization.patient_configuration = SEPatientConfiguration()
+            patient = pe1.engine_initialization.patient_configuration.get_patient()
+            patient.set_name(str(i))
+            patient.get_heart_rate_baseline().set_value(st_hr[i].detach().item(), FrequencyUnit.Per_min)
+            reset_extreme_readings(patient)
+            # p1.hr = st_hr[i].detach().item()
+            # p1.sex = st_gender[i].detach().item()
         return pool
 
     def transition(self, pool, at):
@@ -65,12 +93,21 @@ class PulseModel(nn.Module):
         return torch.FloatTensor(data)
     
     def model(self, mini_batch, static_data, actions_obs, mini_batch_mask, mini_batch_seq_lengths, mini_batch_reversed):
-        T_max = mini_batch.size(1)
+        # T_max = mini_batch.size(1)
+        T_max = 1
+        logging.info("Starting pulse engine")
         pyro.module("pulse", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
             st_gender = pyro.sample(f"s0_gender", dist.Categorical(logits=self.s0_gender), obs=static_data[:,static_cols.index("gender")])
+            logging.info("gender")
             st_hr = pyro.sample(f"s0_hr", dist.Normal(self.s0_hr_mean, self.s0_hr_var))
+            logging.info("hr")
+            logging.info("starting pool")
             pool = self.create_pool(st_gender, st_hr)
+            logging.info("got a pool")
+            if not pool.initialize_engines():
+                logging.info("Unable to load/stabilize any engine")
+                return
             self.emission(pool, 0, mini_batch, mini_batch_mask)
             for t in range(T_max - 1):
                 action = self.policy(torch.column_stack((st_hr.unsqueeze(1), static_data))).squeeze()
@@ -83,7 +120,8 @@ class PulseModel(nn.Module):
                 self.emission(pool, t+1, mini_batch, mini_batch_mask)
             
     def guide(self, mini_batch, static_data, actions_obs, mini_batch_mask, mini_batch_seq_lengths, mini_batch_reversed):
-        T_max = mini_batch.size(1)
+        # T_max = mini_batch.size(1)
+        T_max = 1
         # if on gpu we need the fully broadcast view of the rnn initial state
         # to be in contiguous gpu memory
         h_0_contig = self.h_0.expand(1, mini_batch.size(0), self.rnn.hidden_size).contiguous()
