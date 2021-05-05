@@ -93,9 +93,14 @@ class PulseModel(nn.Module):
         )
 
     def create_pool(self, st_gender, st_hr):
-        pool = PulsePhysiologyEnginePool()
-        for i in range(st_gender.size(0)):
-            p1 = pool.create_engine(i + 1)
+        batch_size = st_gender.size(0)
+        pool = PulsePhysiologyEnginePool(
+            batch_size, "/Users/faaiz/Pulse/builds/install/bin"
+        )
+        for i in range(batch_size):
+            pe1 = pool.create_engine(i + 1)
+            pe1.engine_initialization.data_request_mgr = data_req_mgr
+
             pe1.engine_initialization.patient_configuration = SEPatientConfiguration()
             patient = pe1.engine_initialization.patient_configuration.get_patient()
             patient.set_name(str(i))

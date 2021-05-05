@@ -11,11 +11,16 @@ import pyro.distributions as dist
 import pyro.contrib.examples.polyphonic_data_loader as poly
 from pulse_simulator.PulseModel import PulseModel
 from gumbel_max_sim.utils.ObservationalDataset import ObservationalDataset
-from pulse_simulator.utils.MIMICDataset import dummy_cols as cols, dummy_static_cols as static_cols, action_cols
+from pulse_simulator.utils.MIMICDataset import (
+    dummy_cols as cols,
+    dummy_static_cols as static_cols,
+    action_cols,
+)
 from pyro.infer import SVI, Trace_ELBO
 import torch
 from torch.utils.data.sampler import SubsetRandomSampler
 from pyro.optim import ClippedAdam
+
 
 def delete_redundant_states(dir):
     pattern = f"(model|optimiser)-state-[0-9]+"
@@ -46,16 +51,25 @@ def train(svi, train_loader, use_cuda=False):
             static_data = static_data.cuda()
             actions = actions.cuda()
             lengths = lengths.cuda()
-        mini_batch, mini_batch_reversed, mini_batch_mask, mini_batch_seq_lengths \
-            = poly.get_mini_batch(torch.arange(mini_batch.size(0)), mini_batch, lengths, cuda=use_cuda)
+        (
+            mini_batch,
+            mini_batch_reversed,
+            mini_batch_mask,
+            mini_batch_seq_lengths,
+        ) = poly.get_mini_batch(
+            torch.arange(mini_batch.size(0)), mini_batch, lengths, cuda=use_cuda
+        )
         # do ELBO gradient and accumulate loss
         loss = svi.step(
-            mini_batch.float(), static_data.float(), actions.float(), mini_batch_mask.float(), mini_batch_seq_lengths, mini_batch_reversed.float()
+            mini_batch.float(),
+            static_data.float(),
+            actions.float(),
+            mini_batch_mask.float(),
+            mini_batch_seq_lengths,
+            mini_batch_reversed.float(),
         )
         epoch_loss += loss
-        logging.info(
-            "[minibatch %03d] minibatch training loss: %.4f" % (i, loss)
-        )
+        logging.info("[minibatch %03d] minibatch training loss: %.4f" % (i, loss))
         i += 1
     # return epoch loss
     normalizer_train = len(train_loader.dataset)
@@ -74,11 +88,22 @@ def evaluate(svi, test_loader, use_cuda=False):
             static_data = static_data.cuda()
             actions = actions.cuda()
             lengths = lengths.cuda()
-        mini_batch, mini_batch_reversed, mini_batch_mask, mini_batch_seq_lengths \
-            = poly.get_mini_batch(torch.arange(mini_batch.size(0)), mini_batch, lengths, cuda=use_cuda)
+        (
+            mini_batch,
+            mini_batch_reversed,
+            mini_batch_mask,
+            mini_batch_seq_lengths,
+        ) = poly.get_mini_batch(
+            torch.arange(mini_batch.size(0)), mini_batch, lengths, cuda=use_cuda
+        )
         # compute ELBO estimate and accumulate loss
         test_loss += svi.evaluate_loss(
-            mini_batch.float(), static_data.float(), actions.float(), mini_batch_mask.float(), mini_batch_seq_lengths, mini_batch_reversed.float()
+            mini_batch.float(),
+            static_data.float(),
+            actions.float(),
+            mini_batch_mask.float(),
+            mini_batch_seq_lengths,
+            mini_batch_reversed.float(),
         )
     normalizer_test = len(test_loader.dataset)
     total_epoch_loss_test = test_loss / normalizer_test
@@ -98,7 +123,11 @@ def main(args):
         handlers=[logging.FileHandler(log_file_name), logging.StreamHandler()],
     )
     observational_dataset = ObservationalDataset(
-        args.path, xt_columns=cols, action_columns=action_cols, id_column="icustay_id", static_cols=static_cols
+        args.path,
+        xt_columns=cols,
+        action_columns=action_cols,
+        id_column="icustay_id",
+        static_cols=static_cols,
     )
     pyro.clear_param_store()
     validation_split = 0.05
@@ -121,13 +150,13 @@ def main(args):
     test_sampler = SubsetRandomSampler(test_indices)
 
     train_loader = torch.utils.data.DataLoader(
-        observational_dataset, batch_size=1, sampler=train_sampler, num_workers=4
+        observational_dataset, batch_size=4, sampler=train_sampler, num_workers=4
     )
     validation_loader = torch.utils.data.DataLoader(
-        observational_dataset, batch_size=1, sampler=valid_sampler, num_workers=4
+        observational_dataset, batch_size=4, sampler=valid_sampler, num_workers=4
     )
     test_loader = torch.utils.data.DataLoader(
-        observational_dataset, batch_size=1, sampler=test_sampler, num_workers=4
+        observational_dataset, batch_size=4, sampler=test_sampler, num_workers=4
     )
     adam_params = {
         "lr": args.lr,
