@@ -137,12 +137,8 @@ class PulseModel(nn.Module):
                 dist.Categorical(logits=self.s0_gender),
                 obs=static_data[:, static_cols.index("gender")],
             )
-            logging.info("gender")
             st_hr = pyro.sample(f"s0_hr", dist.Normal(self.s0_hr_mean, self.s0_hr_var))
-            logging.info("hr")
-            logging.info("starting pool")
             pool = self.create_pool(st_gender, st_hr)
-            logging.info("got a pool")
             if not pool.initialize_engines():
                 logging.info("Unable to load/stabilize any engine")
                 return
