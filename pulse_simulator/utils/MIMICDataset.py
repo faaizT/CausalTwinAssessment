@@ -1,3 +1,5 @@
+from pulse.cdm.engine import SEDataRequestManager, SEDataRequest
+
 cols = [
     "bloc",
     "gender",
@@ -56,9 +58,35 @@ cols = [
     "cumulated_balance",
 ]
 
-dummy_cols = ["HR", "Weight_kg", "SysBP", "DiaBP"]
-dummy_static_cols = ["gender"]
+column_mappings = {
+    "HR": "HeartRate",
+    "SysBP": "SystolicArterialPressure",
+    "DiaBP": "DiastolicArterialPressure",
+    "RR": "RespirationRate"
+}
 
+s0_cols = ["HR", "SysBP", "DiaBP", "RR", "height", "blood_volume"]
+dummy_cols = ["HR", "SysBP", "DiaBP", "RR"]
 static_cols = ["gender", "age", "Weight_kg"]
-
 action_cols = ["input_1hourly", "median_dose_vaso"]
+
+request_dict = {
+    "HeartRate": "1/min",
+    "ArterialPressure": "mmHg",
+    "MeanArterialPressure": "mmHg",
+    "SystolicArterialPressure": "mmHg",
+    "DiastolicArterialPressure": "mmHg",
+    "OxygenSaturation": None,
+    "EndTidalCarbonDioxidePressure": "mmHg",
+    "RespirationRate": "1/min",
+    "SkinTemperature": "degC",
+    "CardiacOutput": "L/min",
+    "BloodVolume": "mL"
+}
+
+def get_data_req_mgr():
+    data_requests = []
+    for request, unit in request_dict.items():
+        data_requests.append(SEDataRequest.create_physiology_request(request, unit=unit))
+    return SEDataRequestManager(data_requests)
+

@@ -7,9 +7,13 @@ from torch.distributions import constraints
 from pulse_simulator.utils.Networks import Net
 import pyro.contrib.examples.polyphonic_data_loader as poly
 from pulse_simulator.utils.MIMICDataset import (
+    s0_cols,
     dummy_cols as cols,
-    dummy_static_cols as static_cols,
+    static_cols,
     action_cols,
+    request_dict,
+    get_data_req_mgr,
+    column_mappings,
 )
 from simple_model.Policy import Policy
 from max_likelihood.utils.HelperNetworks import Combiner
@@ -23,6 +27,7 @@ from pulse.cdm.patient_actions import (
     SESubstanceBolus,
     eSubstance_Administration,
     SESubstanceCompoundInfusion,
+    SESubstanceInfusion,
 )
 from pulse.cdm.scalars import (
     MassPerVolumeUnit,
@@ -32,39 +37,31 @@ from pulse.cdm.scalars import (
     PressureUnit,
     FrequencyUnit,
     VolumePerTimeUnit,
+    LengthUnit,
 )
 from pulse_simulator.utils.PatientUtils import reset_extreme_readings
 import logging
 
-
-data_requests = [
-    SEDataRequest.create_physiology_request("HeartRate", unit="1/min"),
-    SEDataRequest.create_physiology_request("ArterialPressure", unit="mmHg"),
-    SEDataRequest.create_physiology_request("MeanArterialPressure", unit="mmHg"),
-    SEDataRequest.create_physiology_request("SystolicArterialPressure", unit="mmHg"),
-    SEDataRequest.create_physiology_request("DiastolicArterialPressure", unit="mmHg"),
-    SEDataRequest.create_physiology_request("OxygenSaturation"),
-    SEDataRequest.create_physiology_request("EndTidalCarbonDioxidePressure", unit="mmHg"),
-    SEDataRequest.create_physiology_request("RespirationRate", unit="1/min"),
-    SEDataRequest.create_physiology_request("SkinTemperature", unit="degC"),
-    SEDataRequest.create_physiology_request("CardiacOutput", unit="L/min"),
-    SEDataRequest.create_physiology_request("BloodVolume", unit="mL"),
-]
-data_req_mgr = SEDataRequestManager(data_requests)
-
-
-
 class PulseModel(nn.Module):
     def __init__(
-        self, rnn_dim=40, rnn_dropout_rate=0.0, st_vec_dim=11, n_act=2, s0_vec_dim=4, use_cuda=False
+        self, rnn_dim=40, rnn_dropout_rate=0.0, st_vec_dim=11, n_act=2, s0_vec_dim=len(s0_cols), use_cuda=False
     ):
         super().__init__()
         self.use_cuda = use_cuda
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.st_vec_dim = st_vec_dim
         self.s0_gender = nn.Parameter(torch.zeros(2))
-        self.s0_Network = Net(input_dim=1, output_dim=4)
-        self.policy = Policy(
+        self.s0_age = nn.Parameter(torch.zeros(2, 2))
+        self.s0_weight = Net(input_dim=2, output_dim=1)
+        self.s0_Network = Net(input_dim=len(static_cols), output_dim=s0_vec_dim)
+        self.vaso = Policy(
+            input_dim=st_vec_dim + len(static_cols),
+            hidden_1_dim=20,
+            hidden_2_dim=20,
+            output_dim=1,
+            use_cuda=use_cuda,
+        )
+        self.iv = Policy(
             input_dim=st_vec_dim + len(static_cols),
             hidden_1_dim=20,
             hidden_2_dim=20,
@@ -89,56 +86,78 @@ class PulseModel(nn.Module):
             self.cuda()
 
     def emission(self, pool, t, mini_batch, mini_batch_mask):
-        results = []
-        active = torch.ones(mini_batch_mask.size(0))
-        for e in pool.get_engines().values():
-            if e.is_active:
-                results.append(e.data_requested.values["HeartRate (1/min)"])
-            else:
-                results.append(-1.0)
-                active[e.get_id() - 1] = 0
-        st_hr = torch.tensor(results)
-        xt_hr = pyro.sample(
-            f"x{t}_hr",
-            dist.Normal(st_hr, 0.001).mask(mini_batch_mask[:, t] * active),
-            obs=mini_batch[:, t, cols.index("HR")],
-        )
+        data, active = self.pull_data(pool, len(mini_batch))
+        requests = list(request_dict.keys())
+        for column, request in column_mappings.items():
+            pyro.sample(
+                f"x{t}_{column}",
+                dist.Normal(data[:, requests.index(request)], 0.001).mask(mini_batch_mask[:, t] * active),
+                obs=mini_batch[:, t, cols.index(column)],
+            )
 
-    def create_pool(self, st_gender, st_hr):
+    def create_pool(self, st_gender, st_age, st_weight, s0):
         batch_size = st_gender.size(0)
         pool = PulsePhysiologyEnginePool(
-            batch_size, "/Users/faaiz/Pulse/builds/install/bin"
+            0, "/data/localhost/taufiq/Pulse/builds/install/bin"
         )
         for i in range(batch_size):
             pe1 = pool.create_engine(i + 1)
-            pe1.engine_initialization.data_request_mgr = data_req_mgr
-
+            pe1.engine_initialization.data_request_mgr = get_data_req_mgr()
             pe1.engine_initialization.patient_configuration = SEPatientConfiguration()
             patient = pe1.engine_initialization.patient_configuration.get_patient()
             patient.set_name(str(i))
+            if st_gender[i].detach().item() == 1:
+                patient.set_sex(eSex.Female)
+            patient.get_weight().set_value(st_weight[i].detach().item(), MassUnit.kg)
+            patient.get_age().set_value(st_age[i].detach().item(), TimeUnit.day)
             patient.get_heart_rate_baseline().set_value(
-                st_hr[i, 1].detach().item(), FrequencyUnit.Per_min
+                s0[i, s0_cols.index("HR")].detach().item(), FrequencyUnit.Per_min
             )
+            patient.get_systolic_arterial_pressure_baseline().set_value(s0[i, s0_cols.index("SysBP")].detach().item(), PressureUnit.mmHg)
+            patient.get_diastolic_arterial_pressure_baseline().set_value(s0[i, s0_cols.index("DiaBP")].detach().item(), PressureUnit.mmHg)
+            patient.get_respiration_rate_baseline().set_value(s0[i, s0_cols.index("RR")].detach().item(), FrequencyUnit.Per_min)
+            patient.get_height().set_value(s0[i, s0_cols.index("height")].detach().item(), LengthUnit.cm)
+            # patient.get_blood_volume_baseline().set_value(s0[i, s0_cols.index("blood_volume")].detach().item(), VolumeUnit.mL)
             reset_extreme_readings(patient)
-            # p1.hr = st_hr[i].detach().item()
-            # p1.sex = st_gender[i].detach().item()
         return pool
 
-    def transition(self, pool, at):
-        for p in pool.get_patients():
-            p.actions.append(at[p.id].detach().item())
-        pool.advance_time_s(60)
+    def administer_vasopressors(self, pool, rate):
+        for e in pool.get_engines().values():
+            if e.is_active:
+                vp_rate = rate[e.get_id() - 1].detach().item()
+                weight = e.engine_initialization.patient_configuration.get_patient().get_weight().get_value()
+                if weight is None:
+                    weight = 80.0
+                infusion = SESubstanceInfusion()
+                infusion.set_comment("Patient receives an infusion of Epinephrine")
+                infusion.set_substance("Epinephrine")
+                infusion.get_rate().set_value(vp_rate*weight, VolumePerTimeUnit.mL_Per_min)
+                infusion.get_concentration().set_value(0.001, MassPerVolumeUnit.from_string("g/L"))
+                e.actions.append(infusion)
+        pool.process_actions()
 
-    def pull_data(self, pool):
+    def administer_iv(self, pool, dose):
+        for e in pool.get_engines().values():
+            if e.is_active:
+                dose_value = dose[e.get_id() - 1].detach().item()
+                substance_compound = SESubstanceCompoundInfusion()
+                substance_compound.set_comment("Patient receives infusion of Saline")
+                substance_compound.set_compound("Saline")
+                substance_compound.get_rate().set_value(dose_value/60, VolumePerTimeUnit.mL_Per_min)
+                substance_compound.get_bag_volume().set_value(dose_value, VolumeUnit.mL)
+                e.actions.append(substance_compound)
+        pool.process_actions()
+
+    def pull_data(self, pool, batch_size):
         data = []
-        active = torch.ones(self.st_vec_dim)
+        active = torch.ones(batch_size)
         for e in pool.get_engines().values():
             if e.is_active:
                 data.append(torch.tensor(list(e.data_requested.values.values())))
             else:
-                data.append(torch.ones(self.st_vec_dim)*-1)
+                data.append(torch.ones(self.st_vec_dim+1)*-1)
                 active[e.get_id() - 1] = 0
-        return torch.stack(data), active
+        return torch.stack(data)[:,1:], active.float()
 
     def model(
         self,
@@ -150,7 +169,7 @@ class PulseModel(nn.Module):
         mini_batch_reversed,
     ):
         # T_max = mini_batch.size(1)
-        T_max = 1
+        T_max = 2
         logging.info("Starting pulse engine")
         pyro.module("pulse", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
@@ -158,24 +177,41 @@ class PulseModel(nn.Module):
                 f"s0_gender",
                 dist.Categorical(logits=self.s0_gender),
                 obs=static_data[:, static_cols.index("gender")],
-            ).unsqueeze(1)
-            s0_loc, s0_scale = self.s0_Network(st_gender)
-            s0 = pyro.sample(f"s0", dist.Normal(s0_loc.squeeze(), torch.exp(s0_scale).squeeze()+0.01).to_event(1))
-            pool = self.create_pool(st_gender, s0)
+            ).to(torch.long)
+            st_age = pyro.sample(
+                f"s0_age",
+                dist.LogNormal(loc=self.s0_age[st_gender, 0], scale=torch.square(self.s0_age[st_gender, 1]) + 0.01),
+                obs=static_data[:, static_cols.index("age")],
+            )
+            weight_loc, weight_scale = self.s0_weight(torch.column_stack((st_gender, st_age)))
+            st_weight = pyro.sample(
+                f"s0_weight",
+                dist.LogNormal(loc=weight_loc.squeeze(), scale=torch.square(weight_scale.squeeze()) + 0.01),
+                obs=static_data[:, static_cols.index("Weight_kg")],
+            )
+            s0_loc, s0_scale = self.s0_Network(torch.column_stack((st_gender, st_age, st_weight)))
+            s0 = pyro.sample(f"s0", dist.LogNormal(loc=s0_loc.squeeze(), scale=torch.square(s0_scale).squeeze()+0.01).to_event(1))
+            pool = self.create_pool(st_gender, st_age, st_weight, s0)
             if not pool.initialize_engines():
                 logging.info("Unable to load/stabilize any engine")
                 return
             self.emission(pool, 0, mini_batch, mini_batch_mask)
             for t in range(T_max - 1):
-                st, active = self.pull_data(pool)
-                action = self.policy(torch.column_stack((st.unsqueeze(1), static_data))).squeeze()
-                at = pyro.sample(f"a{t}",
-                    dist.Normal(action, 0.001).mask(mini_batch_mask[:,t+1]*active),
+                st, active = self.pull_data(pool, len(mini_batch))
+                vp_rate = torch.square(self.vaso(torch.column_stack((st, static_data))).squeeze())
+                vp = pyro.sample(f"vp{t}",
+                    dist.Normal(vp_rate, 0.001).mask(mini_batch_mask[:,t+1]*active),
                     obs=actions_obs[:,t,action_cols.index("median_dose_vaso")]
                 )
-                # self.transition(pool, at)
-            #     st_hr = pyro.sample(f"s{t+1}_hr", dist.Normal(self.pull_data(pool), 0.01).mask(mini_batch_mask[:, t+1]))
-            #     self.emission(pool, t+1, mini_batch, mini_batch_mask)
+                self.administer_vasopressors(pool, vp)
+                iv_dose = torch.square(self.iv(torch.column_stack((st, static_data))).squeeze())
+                iv = pyro.sample(f"iv{t}",
+                    dist.Normal(iv_dose, 0.001).mask(mini_batch_mask[:,t+1]*active),
+                    obs=actions_obs[:,t,action_cols.index("input_1hourly")]
+                )
+                self.administer_iv(pool, iv)
+
+                pool.advance_time_s(30)
 
     def guide(
         self,
@@ -207,7 +243,7 @@ class PulseModel(nn.Module):
             st_loc, st_scale = self.combiner(static_data, rnn_output[:, 0, :])
             st_hr = pyro.sample(
                 f"s0",
-                dist.Normal(
+                dist.LogNormal(
                     st_loc.squeeze(), torch.exp(st_scale).squeeze() + 0.01
                 ).to_event(1),
             )

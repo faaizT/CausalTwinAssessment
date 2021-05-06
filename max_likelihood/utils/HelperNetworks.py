@@ -39,7 +39,6 @@ class Combiner(T.nn.Module):
         self.lin_hidden_to_scale = T.nn.Linear(rnn_dim, out_dim)
         # initialize the two non-linearities used in the neural network
         self.tanh = T.nn.Tanh()
-        self.softplus = T.nn.Softplus()
 
     def forward(self, z_t_1, h_rnn):
         """
@@ -52,7 +51,7 @@ class Combiner(T.nn.Module):
         # use the combined hidden state to compute the mean used to sample z_t
         loc = self.lin_hidden_to_loc(h_combined)
         # use the combined hidden state to compute the scale used to sample z_t
-        scale = self.softplus(self.lin_hidden_to_scale(h_combined))
+        scale = self.lin_hidden_to_scale(h_combined)
         # return loc, scale which can be fed into Normal
         return loc, scale
 

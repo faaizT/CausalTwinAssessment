@@ -13,7 +13,7 @@ from pulse_simulator.PulseModel import PulseModel
 from gumbel_max_sim.utils.ObservationalDataset import ObservationalDataset
 from pulse_simulator.utils.MIMICDataset import (
     dummy_cols as cols,
-    dummy_static_cols as static_cols,
+    static_cols,
     action_cols,
 )
 from pyro.infer import SVI, Trace_ELBO
