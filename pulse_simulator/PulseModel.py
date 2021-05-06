@@ -4,6 +4,7 @@ import pyro.distributions as dist
 import torch
 from torch import nn
 from torch.distributions import constraints
+from pulse_simulator.utils.Networks import Net
 import pyro.contrib.examples.polyphonic_data_loader as poly
 from pulse_simulator.utils.MIMICDataset import (
     dummy_cols as cols,
@@ -38,21 +39,33 @@ import logging
 
 data_requests = [
     SEDataRequest.create_physiology_request("HeartRate", unit="1/min"),
+    SEDataRequest.create_physiology_request("ArterialPressure", unit="mmHg"),
+    SEDataRequest.create_physiology_request("MeanArterialPressure", unit="mmHg"),
+    SEDataRequest.create_physiology_request("SystolicArterialPressure", unit="mmHg"),
+    SEDataRequest.create_physiology_request("DiastolicArterialPressure", unit="mmHg"),
+    SEDataRequest.create_physiology_request("OxygenSaturation"),
+    SEDataRequest.create_physiology_request("EndTidalCarbonDioxidePressure", unit="mmHg"),
+    SEDataRequest.create_physiology_request("RespirationRate", unit="1/min"),
+    SEDataRequest.create_physiology_request("SkinTemperature", unit="degC"),
+    SEDataRequest.create_physiology_request("CardiacOutput", unit="L/min"),
+    SEDataRequest.create_physiology_request("BloodVolume", unit="mL"),
 ]
 data_req_mgr = SEDataRequestManager(data_requests)
 
 
+
 class PulseModel(nn.Module):
     def __init__(
-        self, rnn_dim=40, rnn_dropout_rate=0.0, st_vec_dim=1, n_act=2, use_cuda=False
+        self, rnn_dim=40, rnn_dropout_rate=0.0, st_vec_dim=11, n_act=2, s0_vec_dim=4, use_cuda=False
     ):
         super().__init__()
         self.use_cuda = use_cuda
         self.device = torch.device("cuda" if use_cuda else "cpu")
-        self.s0_hr_mean = nn.Parameter(torch.zeros(1))
-        self.s0_hr_var = nn.Parameter(torch.ones(1))
+        self.st_vec_dim = st_vec_dim
+        self.s0_gender = nn.Parameter(torch.zeros(2))
+        self.s0_Network = Net(input_dim=1, output_dim=4)
         self.policy = Policy(
-            input_dim=st_vec_dim + 1,
+            input_dim=st_vec_dim + len(static_cols),
             hidden_1_dim=20,
             hidden_2_dim=20,
             output_dim=1,
@@ -67,10 +80,9 @@ class PulseModel(nn.Module):
             num_layers=1,
             dropout=rnn_dropout_rate,
         )
-        self.s0_gender = nn.Parameter(torch.zeros(2))
         self.h_0 = nn.Parameter(torch.zeros(1, 1, rnn_dim))
         self.combiner = Combiner(
-            z_dim=st_vec_dim + 1, rnn_dim=rnn_dim, out_dim=st_vec_dim
+            z_dim=len(static_cols), rnn_dim=rnn_dim, out_dim=s0_vec_dim
         )
         self.s_q_0 = nn.Parameter(torch.zeros(st_vec_dim))
         if use_cuda:
@@ -105,7 +117,7 @@ class PulseModel(nn.Module):
             patient = pe1.engine_initialization.patient_configuration.get_patient()
             patient.set_name(str(i))
             patient.get_heart_rate_baseline().set_value(
-                st_hr[i].detach().item(), FrequencyUnit.Per_min
+                st_hr[i, 1].detach().item(), FrequencyUnit.Per_min
             )
             reset_extreme_readings(patient)
             # p1.hr = st_hr[i].detach().item()
@@ -119,9 +131,14 @@ class PulseModel(nn.Module):
 
     def pull_data(self, pool):
         data = []
-        for p in pool.get_patients():
-            data.append(p.results())
-        return torch.FloatTensor(data)
+        active = torch.ones(self.st_vec_dim)
+        for e in pool.get_engines().values():
+            if e.is_active:
+                data.append(torch.tensor(list(e.data_requested.values.values())))
+            else:
+                data.append(torch.ones(self.st_vec_dim)*-1)
+                active[e.get_id() - 1] = 0
+        return torch.stack(data), active
 
     def model(
         self,
@@ -141,20 +158,22 @@ class PulseModel(nn.Module):
                 f"s0_gender",
                 dist.Categorical(logits=self.s0_gender),
                 obs=static_data[:, static_cols.index("gender")],
-            )
-            st_hr = pyro.sample(f"s0_hr", dist.Normal(self.s0_hr_mean, self.s0_hr_var))
-            pool = self.create_pool(st_gender, st_hr)
+            ).unsqueeze(1)
+            s0_loc, s0_scale = self.s0_Network(st_gender)
+            s0 = pyro.sample(f"s0", dist.Normal(s0_loc.squeeze(), torch.exp(s0_scale).squeeze()+0.01).to_event(1))
+            pool = self.create_pool(st_gender, s0)
             if not pool.initialize_engines():
                 logging.info("Unable to load/stabilize any engine")
                 return
             self.emission(pool, 0, mini_batch, mini_batch_mask)
-            # for t in range(T_max - 1):
-            #     action = self.policy(torch.column_stack((st_hr.unsqueeze(1), static_data))).squeeze()
-            #     at = pyro.sample(f"a{t}",
-            #         dist.Normal(action, 0.001).mask(mini_batch_mask[:,t+1]),
-            #         obs=actions_obs[:,t,action_cols.index("median_dose_vaso")]
-            #     )
-            #     self.transition(pool, at)
+            for t in range(T_max - 1):
+                st, active = self.pull_data(pool)
+                action = self.policy(torch.column_stack((st.unsqueeze(1), static_data))).squeeze()
+                at = pyro.sample(f"a{t}",
+                    dist.Normal(action, 0.001).mask(mini_batch_mask[:,t+1]*active),
+                    obs=actions_obs[:,t,action_cols.index("median_dose_vaso")]
+                )
+                # self.transition(pool, at)
             #     st_hr = pyro.sample(f"s{t+1}_hr", dist.Normal(self.pull_data(pool), 0.01).mask(mini_batch_mask[:, t+1]))
             #     self.emission(pool, t+1, mini_batch, mini_batch_mask)
 
@@ -179,17 +198,17 @@ class PulseModel(nn.Module):
         rnn_output, _ = self.rnn(mini_batch_reversed, h_0_contig)
         # reverse the time-ordering in the hidden state and un-pack it
         rnn_output = poly.pad_and_reverse(rnn_output, mini_batch_seq_lengths)
-        st_prev = torch.column_stack(
-            (self.s_q_0.expand(mini_batch.size(0), self.s_q_0.size(0)), static_data)
-        )
+        # st_prev = torch.column_stack(
+        #     (self.s_q_0.expand(mini_batch.size(0), self.s_q_0.size(0)), static_data)
+        # )
         pyro.module("pulse", self)
         with pyro.plate("s_minibatch", len(mini_batch)):
-            for t in range(T_max):
-                st_loc, st_scale = self.combiner(st_prev, rnn_output[:, t, :])
-                st_hr = pyro.sample(
-                    f"s{t}_hr",
-                    dist.Normal(
-                        st_loc.squeeze(), torch.exp(st_scale).squeeze() + 0.001
-                    ).mask(mini_batch_mask[:, t]),
-                )
-                st_prev = torch.column_stack((st_hr.unsqueeze(1), static_data))
+            # for t in range(T_max):
+            st_loc, st_scale = self.combiner(static_data, rnn_output[:, 0, :])
+            st_hr = pyro.sample(
+                f"s0",
+                dist.Normal(
+                    st_loc.squeeze(), torch.exp(st_scale).squeeze() + 0.01
+                ).to_event(1),
+            )
+            # st_prev = torch.column_stack((st_hr.unsqueeze(1), static_data))

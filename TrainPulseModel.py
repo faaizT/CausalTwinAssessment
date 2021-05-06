@@ -130,8 +130,8 @@ def main(args):
         static_cols=static_cols,
     )
     pyro.clear_param_store()
-    validation_split = 0.05
-    test_split = 0.05
+    validation_split = 0.15
+    test_split = 0.15
     shuffle_dataset = True
     dataset_size = len(observational_dataset)
     indices = list(range(dataset_size))
@@ -150,13 +150,13 @@ def main(args):
     test_sampler = SubsetRandomSampler(test_indices)
 
     train_loader = torch.utils.data.DataLoader(
-        observational_dataset, batch_size=4, sampler=train_sampler, num_workers=4
+        observational_dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=4
     )
     validation_loader = torch.utils.data.DataLoader(
-        observational_dataset, batch_size=4, sampler=valid_sampler, num_workers=4
+        observational_dataset, batch_size=args.batch_size, sampler=valid_sampler, num_workers=4
     )
     test_loader = torch.utils.data.DataLoader(
-        observational_dataset, batch_size=4, sampler=test_sampler, num_workers=4
+        observational_dataset, batch_size=args.batch_size, sampler=test_sampler, num_workers=4
     )
     adam_params = {
         "lr": args.lr,
@@ -221,6 +221,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("exportdir", help="path to output directory")
     parser.add_argument("--run_name", help="wandb run name", type=str, required=True)
+    parser.add_argument("--batch_size", help="Batch size", type=int, default=16)
     parser.add_argument("--lr", help="learning rate", type=float, default=0.001)
     parser.add_argument(
         "--weight_decay", help="weight decay (L2 penalty)", type=float, default=0.0
