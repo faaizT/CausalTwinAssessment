@@ -68,6 +68,13 @@ class PulseModel(nn.Module):
             output_dim=1,
             use_cuda=use_cuda,
         )
+        self.mechvent = Policy(
+            input_dim=st_vec_dim + len(static_cols),
+            hidden_1_dim=20,
+            hidden_2_dim=20,
+            output_dim=2,
+            use_cuda=use_cuda,
+        )
         self.rnn = nn.RNN(
             input_size=len(cols),
             hidden_size=rnn_dim,
@@ -94,6 +101,7 @@ class PulseModel(nn.Module):
                 dist.Normal(data[:, requests.index(request)], 0.001).mask(mini_batch_mask[:, t] * active),
                 obs=mini_batch[:, t, cols.index(column)],
             )
+        return data, active
 
     def create_pool(self, st_gender, st_age, st_weight, s0):
         batch_size = st_gender.size(0)
@@ -134,7 +142,6 @@ class PulseModel(nn.Module):
                 infusion.get_rate().set_value(vp_rate*weight, VolumePerTimeUnit.mL_Per_min)
                 infusion.get_concentration().set_value(0.001, MassPerVolumeUnit.from_string("g/L"))
                 e.actions.append(infusion)
-        pool.process_actions()
 
     def administer_iv(self, pool, dose):
         for e in pool.get_engines().values():
@@ -146,7 +153,16 @@ class PulseModel(nn.Module):
                 substance_compound.get_rate().set_value(dose_value/60, VolumePerTimeUnit.mL_Per_min)
                 substance_compound.get_bag_volume().set_value(dose_value, VolumeUnit.mL)
                 e.actions.append(substance_compound)
-        pool.process_actions()
+
+    def ventilation(self, pool, mechvent):
+        for e in pool.get_engines().values():
+            if e.is_active and mechvent[e.get_id() - 1].detach().item() == 1:
+                ventilation = SEMechanicalVentilation()
+                ventilation.set_comment("Patient is placed on a mechanical ventilator")
+                ventilation.get_flow().set_value(50, VolumePerTimeUnit.mL_Per_s)
+                ventilation.get_pressure().set_value(.2, PressureUnit.psi)
+                ventilation.set_state(eSwitch.On)
+                e.actions.append(ventilation)
 
     def pull_data(self, pool, batch_size):
         data = []
@@ -195,9 +211,8 @@ class PulseModel(nn.Module):
             if not pool.initialize_engines():
                 logging.info("Unable to load/stabilize any engine")
                 return
-            self.emission(pool, 0, mini_batch, mini_batch_mask)
+            st, active = self.emission(pool, 0, mini_batch, mini_batch_mask)
             for t in range(T_max - 1):
-                st, active = self.pull_data(pool, len(mini_batch))
                 vp_rate = torch.square(self.vaso(torch.column_stack((st, static_data))).squeeze())
                 vp = pyro.sample(f"vp{t}",
                     dist.Normal(vp_rate, 0.001).mask(mini_batch_mask[:,t+1]*active),
@@ -210,8 +225,15 @@ class PulseModel(nn.Module):
                     obs=actions_obs[:,t,action_cols.index("input_1hourly")]
                 )
                 self.administer_iv(pool, iv)
-
+                mechvent_logits = self.mechvent(torch.column_stack((st, static_data))).squeeze()
+                mechvent = pyro.sample(f"vent{t}",
+                    dist.Categorical(logits=mechvent_logits).mask(mini_batch_mask[:,t+1]*active),
+                    obs=actions_obs[:,t,action_cols.index("mechvent")]
+                )
+                self.ventilation(pool, mechvent)
+                pool.process_actions()
                 pool.advance_time_s(30)
+                st, active = self.emission(pool, t+1, mini_batch, mini_batch_mask)
 
     def guide(
         self,

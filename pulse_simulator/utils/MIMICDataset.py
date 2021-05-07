@@ -68,7 +68,7 @@ column_mappings = {
 s0_cols = ["HR", "SysBP", "DiaBP", "RR", "height", "blood_volume"]
 dummy_cols = ["HR", "SysBP", "DiaBP", "RR"]
 static_cols = ["gender", "age", "Weight_kg"]
-action_cols = ["input_1hourly", "median_dose_vaso"]
+action_cols = ["input_1hourly", "median_dose_vaso", "mechvent"]
 
 request_dict = {
     "HeartRate": "1/min",
