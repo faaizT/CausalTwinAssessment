@@ -22,6 +22,22 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from pyro.optim import ClippedAdam
 
 
+def log_initial_state(model, epoch, mini_batch, device="cpu"):
+    softmax = torch.nn.Softmax(dim=0)
+    with torch.no_grad():
+        gender_data = [[0, softmax(model.s0_gender).numpy()[0]],
+                       [1, softmax(model.s0_gender).numpy()[1]]]
+        gender_table = wandb.Table(data=gender_data, columns=["s0_gender", "probability"])
+        age_male = torch.exp(model.s0_age[0, 0]).item()
+        age_female = torch.exp(model.s0_age[1, 0]).item()
+        age_data =[[0, age_male], [1, age_female]]
+        age_table = wandb.Table(data=age_data, columns=["s0_gender", "Mean age"])
+    wandb.log({'epoch': epoch,
+               'minibatch': mini_batch,
+               'gender_table': gender_table,
+               'age_table': age_table})
+
+
 def delete_redundant_states(dir):
     pattern = f"(model|optimiser)-state-[0-9]+"
     for f in os.listdir(dir):
@@ -38,7 +54,7 @@ def save_states(model, exportdir, iter_num=None, save_final=False):
     logging.info("done saving model checkpoints to disk.")
 
 
-def train(svi, train_loader, use_cuda=False):
+def train(svi, train_loader, model, exportdir, epoch, use_cuda=False):
     # initialize loss accumulator
     epoch_loss = 0.0
     i = 0
@@ -69,8 +85,13 @@ def train(svi, train_loader, use_cuda=False):
             mini_batch_reversed.float(),
         )
         epoch_loss += loss
-        logging.info("[minibatch %03d] minibatch training loss: %.4f" % (i, loss))
+        logging.info("[epoch %03d] [minibatch %03d] minibatch training loss: %.4f" % (epoch, i, loss))
+        average_loss = epoch_loss/(i+1)
+        wandb.log({"epoch": epoch, "minibatch": i, "Minibatch loss": loss, "Average Minibatch loss": average_loss})
         i += 1
+        if i % 10 == 0:
+            save_states(model, exportdir, iter_num=f"minibatch-{i-1}")
+            log_initial_state(model, epoch, i-1)
     # return epoch loss
     normalizer_train = len(train_loader.dataset)
     total_epoch_loss_train = epoch_loss / normalizer_train
@@ -170,11 +191,11 @@ def main(args):
     NUM_EPOCHS = args.epochs
     train_loss = {"Epochs": [], "Training Loss": []}
     validation_loss = {"Epochs": [], "Test Loss": []}
-    SAVE_N_TEST_FREQUENCY = 4
+    SAVE_N_TEST_FREQUENCY = 1
     # training loop
     i = 0
     for epoch in range(NUM_EPOCHS):
-        epoch_loss_train = train(svi, train_loader, use_cuda=use_cuda)
+        epoch_loss_train = train(svi, train_loader, pulse_model, exportdir, epoch, use_cuda=use_cuda)
         train_loss["Epochs"].append(epoch)
         train_loss["Training Loss"].append(epoch_loss_train)
         wandb.log({"epoch": epoch, "Training Loss": epoch_loss_train})
