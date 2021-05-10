@@ -113,9 +113,7 @@ class PulseModel(nn.Module):
 
     def create_pool(self, st_gender, st_age, st_weight, s0):
         batch_size = st_gender.size(0)
-        pool = PulsePhysiologyEnginePool(
-            0, "/data/localhost/taufiq/Pulse/builds/install/bin"
-        )
+        pool = PulsePhysiologyEnginePool(0)
         for i in range(batch_size):
             pe1 = pool.create_engine(i + 1)
             pe1.engine_initialization.data_request_mgr = get_data_req_mgr()
