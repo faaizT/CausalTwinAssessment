@@ -44,6 +44,7 @@ import logging
 
 height_min = 151.0
 height_max = 190.0
+ageMin, ageMax = 18, 65
 
 
 class PulseModel(nn.Module):
@@ -111,7 +112,7 @@ class PulseModel(nn.Module):
             )
         return data, active
 
-    def create_pool(self, st_gender, st_age, st_weight, s0):
+    def create_pool(self, st_gender, st_age, st_weight, st_height, s0):
         batch_size = st_gender.size(0)
         pool = PulsePhysiologyEnginePool(0)
         for i in range(batch_size):
@@ -132,7 +133,7 @@ class PulseModel(nn.Module):
             patient.get_systolic_arterial_pressure_baseline().set_value(s0[i, s0_cols.index("SysBP")].detach().item(), PressureUnit.mmHg)
             patient.get_diastolic_arterial_pressure_baseline().set_value(s0[i, s0_cols.index("DiaBP")].detach().item(), PressureUnit.mmHg)
             patient.get_respiration_rate_baseline().set_value(s0[i, s0_cols.index("RR")].detach().item(), FrequencyUnit.Per_min)
-            # patient.get_height().set_value(s0[i, s0_cols.index("height")].detach().item(), LengthUnit.cm)
+            patient.get_height().set_value(st_height[i].detach().item(), LengthUnit.cm)
             # patient.get_blood_volume_baseline().set_value(s0[i, s0_cols.index("blood_volume")].detach().item(), VolumeUnit.mL)
             reset_extreme_readings(patient)
         return pool
@@ -203,7 +204,7 @@ class PulseModel(nn.Module):
                 obs=static_data[:, static_cols.index("gender")],
             ).to(torch.long)
             height_raw = pyro.sample("s0_height", dist.Normal(loc=self.s0_height_mu[st_gender], scale=torch.square(self.s0_height_sigma[st_gender]) + 1))
-            height = (self.tanh(height_raw) + 1)/2*(height_max-height_min) + height_min
+            st_height = (self.tanh(height_raw) + 1)/2*(height_max-height_min) + height_min
             st_age = pyro.sample(
                 f"s0_age",
                 dist.Normal(loc=self.s0_age[st_gender, 0], scale=torch.square(self.s0_age[st_gender, 1]) + 1),
@@ -217,7 +218,7 @@ class PulseModel(nn.Module):
             )
             s0_loc, s0_scale = self.s0_Network(torch.column_stack((st_gender, st_age, st_weight)))
             s0 = pyro.sample(f"s0", dist.Normal(loc=s0_loc.squeeze(), scale=torch.square(s0_scale).squeeze()+1).to_event(1), obs=mini_batch[:, 0, 0:len(s0_cols)])
-            pool = self.create_pool(st_gender, st_age, st_weight, s0)
+            pool = self.create_pool(st_gender, st_age, st_weight, st_height, s0)
             if not pool.initialize_engines():
                 logging.info("Unable to load/stabilize any engine")
                 return

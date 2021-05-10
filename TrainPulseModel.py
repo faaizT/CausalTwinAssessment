@@ -28,8 +28,8 @@ def log_initial_state(model, epoch, mini_batch, device="cpu"):
         gender_data = [[0, softmax(model.s0_gender).numpy()[0]],
                        [1, softmax(model.s0_gender).numpy()[1]]]
         gender_table = wandb.Table(data=gender_data, columns=["s0_gender", "probability"])
-        age_male = torch.exp(model.s0_age[0, 0]).item()
-        age_female = torch.exp(model.s0_age[1, 0]).item()
+        age_male = model.s0_age[0, 0].item()
+        age_female = model.s0_age[1, 0].item()
         age_data =[[0, age_male], [1, age_female]]
         age_table = wandb.Table(data=age_data, columns=["s0_gender", "Mean age"])
     wandb.log({'epoch': epoch,
