@@ -83,6 +83,7 @@ def train(svi, train_loader, model, exportdir, epoch, use_cuda=False):
             mini_batch_mask.float(),
             mini_batch_seq_lengths,
             mini_batch_reversed.float(),
+            run_pulse = epoch > 0
         )
         epoch_loss += loss
         logging.info("[epoch %03d] [minibatch %03d] minibatch training loss: %.4f" % (epoch, i, loss))
@@ -125,6 +126,7 @@ def evaluate(svi, test_loader, use_cuda=False):
             mini_batch_mask.float(),
             mini_batch_seq_lengths,
             mini_batch_reversed.float(),
+            run_pulse=True
         )
     normalizer_test = len(test_loader.dataset)
     total_epoch_loss_test = test_loss / normalizer_test
@@ -191,7 +193,7 @@ def main(args):
     NUM_EPOCHS = args.epochs
     train_loss = {"Epochs": [], "Training Loss": []}
     validation_loss = {"Epochs": [], "Test Loss": []}
-    SAVE_N_TEST_FREQUENCY = 1
+    TEST_FREQUENCY = 2
     # training loop
     i = 0
     for epoch in range(NUM_EPOCHS):
@@ -202,7 +204,7 @@ def main(args):
         logging.info(
             "[epoch %03d]  average training loss: %.4f" % (epoch, epoch_loss_train)
         )
-        if (epoch + 1) % SAVE_N_TEST_FREQUENCY == 0:
+        if (epoch + 1) % TEST_FREQUENCY == 0:
             # report test diagnostics
             epoch_loss_val = evaluate(svi, validation_loader, use_cuda=use_cuda)
             validation_loss["Epochs"].append(epoch)

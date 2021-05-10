@@ -192,6 +192,7 @@ class PulseModel(nn.Module):
         mini_batch_mask,
         mini_batch_seq_lengths,
         mini_batch_reversed,
+        run_pulse
     ):
         # T_max = mini_batch.size(1)
         T_max = 2
@@ -242,9 +243,10 @@ class PulseModel(nn.Module):
                 #     obs=actions_obs[:,t,action_cols.index("mechvent")]
                 # )
                 # self.ventilation(pool, mechvent)
-                pool.process_actions()
-                pool.advance_time_s(3600)
-                st, active = self.emission(pool, t+1, mini_batch, mini_batch_mask)
+                if run_pulse:
+                    pool.process_actions()
+                    pool.advance_time_s(3600)
+                    st, active = self.emission(pool, t+1, mini_batch, mini_batch_mask)
 
     def guide(
         self,
@@ -254,9 +256,10 @@ class PulseModel(nn.Module):
         mini_batch_mask,
         mini_batch_seq_lengths,
         mini_batch_reversed,
+        run_pulse
     ):
         # T_max = mini_batch.size(1)
-        T_max = 1
+        T_max = 2
         # if on gpu we need the fully broadcast view of the rnn initial state
         # to be in contiguous gpu memory
         # h_0_contig = self.h_0.expand(
