@@ -1,4 +1,5 @@
 import torch
+import pandas as pd
 from sepsisSimDiabetes.State import State
 
 
@@ -76,3 +77,15 @@ class State(State):
             self.vent_state,
             self.diabetic_idx,
         )).float()
+
+    def get_dataframe(self):
+        state_tensor = self.get_state_tensor()
+        return pd.DataFrame(state_tensor.numpy(),
+                            columns=['hr_state',
+                            'sysbp_state',
+                            'percoxyg_state',
+                            'glucose_state',
+                            'antibiotic_state',
+                            'vaso_state',
+                            'vent_state',
+                            'diabetic_idx'])
