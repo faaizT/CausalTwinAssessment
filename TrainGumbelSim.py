@@ -14,6 +14,7 @@ from pyro.ops.indexing import Vindex
 from pyro.util import ignore_jit_warnings
 import pyro.contrib.examples.polyphonic_data_loader as poly
 from gumbel_max_sim.GumbelMaxModel import GumbelMaxModel
+from gumbel_max_sim.GumbelMaxModelUB import GumbelMaxModelUB
 from gumbel_max_sim.utils.ObservationalDataset import ObservationalDataset, cols
 from pyro.infer.autoguide import AutoDelta
 from pyro.infer import SVI, Trace_ELBO, TraceEnum_ELBO
@@ -141,7 +142,10 @@ def evaluate(svi, test_loader, use_cuda=False):
 def main(args):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
-    gumbel_model = GumbelMaxModel(simulator_name=args.simulator, use_cuda=use_cuda)
+    if args.ub:
+        gumbel_model = GumbelMaxModelUB(simulator_name=args.simulator, use_cuda=use_cuda)
+    else:
+        gumbel_model = GumbelMaxModel(simulator_name=args.simulator, use_cuda=use_cuda)
     gumbel_model.to(device)
     exportdir = args.exportdir
     log_file_name = f"{exportdir}/gumbel_max_model.log"
@@ -251,6 +255,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("exportdir", help="path to output directory")
     parser.add_argument("--output_file", help="Output file to contain final test loss results", required=True)
+    parser.add_argument("--ub", help="find upper bound loss", type=bool, default=False)
     parser.add_argument("--simulator", help="name of simulator to run", type=str, default='real')
     parser.add_argument("--run_name", help="wandb run name", type=str, required=True)
     parser.add_argument("--lr", help="learning rate", type=float, default=0.001)

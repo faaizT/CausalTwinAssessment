@@ -11,10 +11,13 @@ cols = ['t', 'X_t', 'A_t']
 
 
 class SimpleModel(nn.Module):
-    def __init__(self, learn_initial_state, phy_pol, increment_factor, rho, use_cuda=False):
+    def __init__(self, learn_initial_state, phy_pol, increment_factor, rho, calc_ub, use_cuda=False):
         super().__init__()
+        self.calc_ub = calc_ub
         if phy_pol:
             self.policy = physicians_policy
+        elif self.calc_ub:
+            self.policy = Policy(1, 2)
         else:
             self.policy = Policy(2, 2)
         self.s1_network = SNetwork(4, 2)
@@ -50,12 +53,18 @@ class SimpleModel(nn.Module):
                 sigma = torch.tensor([[20, self.rho*np.sqrt(40*20)], [self.rho*np.sqrt(40*20), 40]]).float()
                 s_0 = pyro.sample("s_0", dist.MultivariateNormal(mu, covariance_matrix=sigma))
             x_0 = pyro.sample("x_0", dist.Normal(s_0[:, 0], 1), obs=mini_batch[:, 0, cols.index('X_t')])
-            a_0 = pyro.sample("a_0", dist.Categorical(logits=self.policy(s_0)), obs=mini_batch[:, 0, cols.index('A_t')])
+            if self.calc_ub:
+                a_0 = pyro.sample("a_0", dist.Categorical(logits=self.policy(x_0.unsqueeze(1))), obs=mini_batch[:, 0, cols.index('A_t')])
+            else:
+                a_0 = pyro.sample("a_0", dist.Categorical(logits=self.policy(s_0)), obs=mini_batch[:, 0, cols.index('A_t')])
             increment_factor = torch.stack(len(mini_batch)*[self.increment_factor])
             s_1 = pyro.sample("s_1", dist.MultivariateNormal(s_0 + torch.column_stack(2*[a_0])*increment_factor,
                                                              torch.tensor([[1, 0.5], [0.5, 1]]).float()))
             x_1 = pyro.sample("x_1", dist.Normal(s_1[:, 0], 1), obs=mini_batch[:, 1, cols.index('X_t')])
-            a_1 = pyro.sample("a_1", dist.Categorical(logits=self.policy(s_1)), obs=mini_batch[:, 1, cols.index('A_t')])
+            if self.calc_ub:
+                a_1 = pyro.sample("a_1", dist.Categorical(logits=self.policy(x_1.unsqueeze(1))), obs=mini_batch[:, 1, cols.index('A_t')])
+            else:
+                a_1 = pyro.sample("a_1", dist.Categorical(logits=self.policy(s_1)), obs=mini_batch[:, 1, cols.index('A_t')])
 
     def guide(self, mini_batch):
         pyro.module("simple_model", self)
