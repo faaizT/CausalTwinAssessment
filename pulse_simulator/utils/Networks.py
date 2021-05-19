@@ -2,6 +2,26 @@ import torch
 import torch as T
 
 
+class Policy(T.nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_1_dim=8, use_cuda=False):
+        super(Policy, self).__init__()
+        self.hid1 = T.nn.Linear(input_dim, hidden_1_dim)
+        self.outp = T.nn.Linear(hidden_1_dim, output_dim)
+        self.leakyRelu = T.nn.LeakyReLU()
+
+        T.nn.init.xavier_uniform_(self.hid1.weight)
+        T.nn.init.zeros_(self.hid1.bias)
+        T.nn.init.xavier_uniform_(self.outp.weight)
+        T.nn.init.zeros_(self.outp.bias)
+        if use_cuda:
+            self.cuda()
+
+    def forward(self, x):
+        z = self.leakyRelu(self.hid1(x))
+        z = self.outp(z)
+        return z
+
+
 class Net(T.nn.Module):
     def __init__(
         self, input_dim, output_dim, hidden_dim1=8, hidden_dim2=8, use_cuda=False

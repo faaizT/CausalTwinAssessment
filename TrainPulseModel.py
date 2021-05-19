@@ -10,9 +10,10 @@ import pyro
 import pyro.distributions as dist
 import pyro.contrib.examples.polyphonic_data_loader as poly
 from pulse_simulator.PulseModel import PulseModel
-from gumbel_max_sim.utils.ObservationalDataset import ObservationalDataset
+from pulse_simulator.utils.ObservationalDataset import ObservationalDataset
 from pulse_simulator.utils.MIMICDataset import (
-    dummy_cols as cols,
+    cols,
+    pulse_cols,
     static_cols,
     action_cols,
 )
@@ -57,42 +58,24 @@ def save_states(model, exportdir, iter_num=None, save_final=False):
 def train(svi, train_loader, model, exportdir, epoch, use_cuda=False):
     # initialize loss accumulator
     epoch_loss = 0.0
-    i = 0
     # do a training epoch over each mini-batch x returned
     # by the data loader
-    for mini_batch, static_data, actions, lengths in train_loader:
+    for mini_batch, sim_mini_batch, static_data, actions, lengths in train_loader:
         # if on GPU put mini-batch into CUDA memory
         if use_cuda:
             mini_batch = mini_batch.cuda()
+            sim_mini_batch = sim_mini_batch.cuda()
             static_data = static_data.cuda()
             actions = actions.cuda()
             lengths = lengths.cuda()
-        (
-            mini_batch,
-            mini_batch_reversed,
-            mini_batch_mask,
-            mini_batch_seq_lengths,
-        ) = poly.get_mini_batch(
-            torch.arange(mini_batch.size(0)), mini_batch, lengths, cuda=use_cuda
-        )
         # do ELBO gradient and accumulate loss
         loss = svi.step(
             mini_batch.float(),
-            static_data.float(),
+            sim_mini_batch.float(),
             actions.float(),
-            mini_batch_mask.float(),
-            mini_batch_seq_lengths,
-            mini_batch_reversed.float(),
-            run_pulse = epoch > 0
+            static_data.float(),
         )
         epoch_loss += loss
-        logging.info("[epoch %03d] [minibatch %03d] minibatch training loss: %.4f" % (epoch, i, loss))
-        average_loss = epoch_loss/(i+1)
-        wandb.log({"epoch": epoch, "minibatch": i, "Minibatch loss": loss, "Average Minibatch loss": average_loss})
-        i += 1
-        if i % 10 == 0:
-            save_states(model, exportdir, iter_num=f"minibatch-{i-1}")
-            log_initial_state(model, epoch, i-1)
     # return epoch loss
     normalizer_train = len(train_loader.dataset)
     total_epoch_loss_train = epoch_loss / normalizer_train
@@ -103,30 +86,20 @@ def evaluate(svi, test_loader, use_cuda=False):
     # initialize loss accumulator
     test_loss = 0.0
     # compute the loss over the entire test set
-    for mini_batch, static_data, actions, lengths in test_loader:
+    for mini_batch, sim_mini_batch, static_data, actions, lengths in test_loader:
         # if on GPU put mini-batch into CUDA memory
         if use_cuda:
             mini_batch = mini_batch.cuda()
+            sim_mini_batch = sim_mini_batch.cuda()
             static_data = static_data.cuda()
             actions = actions.cuda()
             lengths = lengths.cuda()
-        (
-            mini_batch,
-            mini_batch_reversed,
-            mini_batch_mask,
-            mini_batch_seq_lengths,
-        ) = poly.get_mini_batch(
-            torch.arange(mini_batch.size(0)), mini_batch, lengths, cuda=use_cuda
-        )
-        # compute ELBO estimate and accumulate loss
+        # do ELBO gradient and accumulate loss
         test_loss += svi.evaluate_loss(
             mini_batch.float(),
-            static_data.float(),
+            sim_mini_batch.float(),
             actions.float(),
-            mini_batch_mask.float(),
-            mini_batch_seq_lengths,
-            mini_batch_reversed.float(),
-            run_pulse=True
+            static_data.float(),
         )
     normalizer_test = len(test_loader.dataset)
     total_epoch_loss_test = test_loss / normalizer_test
@@ -147,14 +120,16 @@ def main(args):
     )
     observational_dataset = ObservationalDataset(
         args.path,
+        args.sim_path,
         xt_columns=cols,
+        st_columns=pulse_cols,
         action_columns=action_cols,
         id_column="icustay_id",
         static_cols=static_cols,
     )
     pyro.clear_param_store()
-    validation_split = 0.15
-    test_split = 0.15
+    validation_split = 0.10
+    test_split = 0.10
     shuffle_dataset = True
     dataset_size = len(observational_dataset)
     indices = list(range(dataset_size))
@@ -193,7 +168,7 @@ def main(args):
     NUM_EPOCHS = args.epochs
     train_loss = {"Epochs": [], "Training Loss": []}
     validation_loss = {"Epochs": [], "Test Loss": []}
-    TEST_FREQUENCY = 2
+    TEST_FREQUENCY = 10
     # training loop
     i = 0
     for epoch in range(NUM_EPOCHS):
@@ -238,11 +213,12 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("path", help="path to observational data")
+    parser.add_argument("--path", help="path to observational data", required=True)
+    parser.add_argument("--sim_path", help="path to simulated data", required=True)
     parser.add_argument(
-        "epochs", help="maximum number of epochs to train for", type=int, default=100
+        "--epochs", help="maximum number of epochs to train for", type=int, default=100
     )
-    parser.add_argument("exportdir", help="path to output directory")
+    parser.add_argument("--exportdir", help="path to output directory")
     parser.add_argument("--run_name", help="wandb run name", type=str, required=True)
     parser.add_argument("--batch_size", help="Batch size", type=int, default=16)
     parser.add_argument("--lr", help="learning rate", type=float, default=0.001)

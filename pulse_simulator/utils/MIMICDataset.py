@@ -1,62 +1,36 @@
-from pulse.cdm.engine import SEDataRequestManager, SEDataRequest
-
 cols = [
-    "bloc",
-    "gender",
-    "age",
-    "elixhauser",
-    "re_admission",
-    "died_in_hosp",
-    "died_within_48h_of_out_time",
-    "mortality_90d",
-    "delay_end_of_record_and_discharge_or_death",
-    "SOFA",
-    "SIRS",
-    "Weight_kg",
-    "GCS",
-    "HR",
-    "SysBP",
-    "MeanBP",
-    "DiaBP",
-    "RR",
-    "SpO2",
-    "Temp_C",
-    "FiO2_1",
-    "Potassium",
-    "Sodium",
-    "Chloride",
-    "Glucose",
-    "BUN",
-    "Creatinine",
-    "Magnesium",
-    "Calcium",
-    "Ionised_Ca",
-    "CO2_mEqL",
-    "SGOT",
-    "SGPT",
-    "Total_bili",
-    "Albumin",
-    "Hb",
-    "WBC_count",
-    "Platelets_count",
-    "PTT",
-    "PT",
-    "INR",
-    "Arterial_pH",
-    "paO2",
-    "paCO2",
-    "Arterial_BE",
-    "HCO3",
-    "Arterial_lactate",
-    "mechvent",
-    "Shock_Index",
-    "PaO2_FiO2",
-    "max_dose_vaso",
-    "input_total",
-    "output_total",
-    "output_1hourly",
-    "cumulated_balance",
+    'Temp_C', 'HR', 'SysBP', 'MeanBP', 'DiaBP', 'RR',
+    'Potassium', 'Sodium', 'Chloride', 'Glucose', 'Creatinine', 'Calcium',
+    'Albumin', 'WBC_count', 'Arterial_pH', 'HCO3', 'Arterial_lactate'
 ]
+
+pulse_cols = [
+       'Albumin', 'paCO2', 'paO2', 'ArterialPressure (mmHg)', 'HCO3',
+       'Arterial_pH', 'BloodUreaNitrogenConcentration (mg/dL)',
+       'BloodVolume (mL)', 'Calcium', 'CarbonDioxideSaturation (None)',
+       'CardiacOutput (L/min)', 'Chloride', 'Creatinine', 'DiaBP',
+       'EndTidalCarbonDioxidePressure (mmHg)', 'Glucose', 'HR',
+       'HemoglobinContent (g)', 'Arterial_lactate', 'MeanBP',
+       'OxygenSaturation (None)', 'Potassium', 'RR', 'PaO2_FiO2',
+       'Temp_C', 'Sodium', 'SysBP', 'WBC_count',
+]
+
+biogears_cols = [
+       'HR', 'MeanBP', 'SysBP', 'DiaBP', 'CardiacOutput(mL/min)',
+       'HemoglobinContent(g)', 'CentralVenousPressure(mmHg)', 'Hematocrit',
+       'Arterial_pH', 'WBC_count', 'UrineProductionRate(mL/s)', 'RR',
+       'OxygenSaturation', 'CarbonDioxideSaturation', 'CoreTemperature(degC)',
+       'Temp_C', 'HCO3', 'Creatinine', 'Arterial_lactate', 'Glucose', 'Sodium',
+       'Potassium', 'Chloride', 'Calcium', 'Albumin']
+
+action_cols = [
+    'A_t'
+]
+
+static_cols = [
+    "gender", "age", "Weight_kg"
+]
+
 
 column_mappings = {
     "HR": "HeartRate",
@@ -81,8 +55,6 @@ column_mappings = {
 
 s0_cols = ["HR", "SysBP", "DiaBP", "RR"]
 dummy_cols = s0_cols + ["Potassium", "Glucose", "BUN", "Creatinine", "Calcium", "Albumin", "Hb", "WBC_count", "Arterial_pH", "paO2", "paCO2", "HCO3", "Arterial_lactate", "PaO2_FiO2"]
-static_cols = ["gender", "age", "Weight_kg"]
-action_cols = ["input_1hourly", "median_dose_vaso", "mechvent"]
 
 request_dict = {
     "HeartRate": "1/min",
@@ -117,12 +89,4 @@ request_dict = {
 
 substance_requests = ['Potassium', 'Sodium', 'Chloride', 'Glucose', 'Creatinine', 'Calcium', 'Albumin', 'Bicarbonate', 'Lactate']
 
-def get_data_req_mgr():
-    data_requests = []
-    for request, unit in request_dict.items():
-        if request in substance_requests:
-            data_requests.append(SEDataRequest.create_substance_request(request, "BloodConcentration", unit))
-        else:
-            data_requests.append(SEDataRequest.create_physiology_request(request, unit=unit))
-    return SEDataRequestManager(data_requests)
 
