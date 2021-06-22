@@ -113,7 +113,7 @@ def load_biogears_data(sim_path, MIMICtable):
     extension = '.csv'
     all_filenames = [i for i in glob.glob(f'{args.sim_path}/*{extension}')]
     biogears_data = pd.DataFrame()
-    for f in tqdm(all_filenames):
+    for f in all_filenames:
         if os.path.getsize(f) > 0:
             df = pd.read_csv(f)
             m = re.search('SimulateMIMIC_(.+?)_.csv', f)
@@ -198,8 +198,8 @@ if __name__=="__main__":
     parser.add_argument("--sim_name", help="Simulator name (pulse/biogears)", type=str, default="biogears")
     parser.add_argument("--col_bin_num", help="number of column bins", type=int, default=5)
     parser.add_argument("--obs_path", help="path to observational data directory", default="/data/ziz/taufiq/export-dir")
-    parser.add_argument("--sim_path", help="path to sim data directory", default="/data/ziz/taufiq/pulse-data-5-step")
-    parser.add_argument("--hyp_test_dir", help="Directory to save hypothesis test info", default="/data/ziz/taufiq/hyp-test-dir")
+    parser.add_argument("--sim_path", help="path to sim data directory", default="/data/ziz/taufiq/biogears-data-5step")
+    parser.add_argument("--hyp_test_dir", help="Directory to save hypothesis test info", default="/data/ziz/taufiq/hyp-test-dir-biogears")
     args = parser.parse_args()
     if not os.path.exists(f'{args.hyp_test_dir}/rej_hyp_nums.csv'):
         with open(f'{args.hyp_test_dir}/rej_hyp_nums.csv', "w") as f:
