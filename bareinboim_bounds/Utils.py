@@ -37,11 +37,11 @@ def get_trajec_actions(trajectories, column):
     return trajec_actions
 
 
-def get_pulse_trajec_actions(pulse_trajecs, column):
-    pulse_trajec_actions = pd.DataFrame()
-    for index, row in pulse_trajecs.iterrows():
+def get_sim_trajec_actions(sim_trajecs, column):
+    sim_trajec_actions = pd.DataFrame()
+    for index, row in sim_trajecs.iterrows():
         if row['t'] == 0 and index > 0:
-            pulse_trajec_actions = pulse_trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, column: col_traj}, ignore_index=True)
+            sim_trajec_actions = sim_trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, column: col_traj}, ignore_index=True)
             age = row['age']
             actions = [row['A_t']]
             col_traj = [row[column]]
@@ -56,9 +56,9 @@ def get_pulse_trajec_actions(pulse_trajecs, column):
             actions.append(row['A_t'])
             col_traj.append(row[column])
             gender = row['gender']
-    pulse_trajec_actions = pulse_trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, column: col_traj}, ignore_index=True)
-    pulse_trajec_actions['icustay_id'] = pulse_trajecs['icustay_id'].unique()
-    return pulse_trajec_actions
+    sim_trajec_actions = sim_trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, column: col_traj}, ignore_index=True)
+    sim_trajec_actions['icustay_id'] = sim_trajecs['icustay_id'].unique()
+    return sim_trajec_actions
 
 
 def find_elements(series, element):
@@ -90,12 +90,12 @@ def compute_probs(trajec_actions, column):
     return trajec_actions
 
 
-def bootstrap_distribution(col, gender, age, action, column_v, trajec_actions, pulse_trajec_actions, n_iter=100):
+def bootstrap_distribution(col, gender, age, action, column_v, trajec_actions, sim_trajec_actions, n_iter=100):
     df = pd.DataFrame()
     max_y = trajec_actions.loc[find_elements(trajec_actions['gender'], gender) & find_elements(trajec_actions['age'], age) & find_elements_containing(trajec_actions[col], max(column_v)), f'{col}_raw'].max()
     min_y = trajec_actions.loc[find_elements(trajec_actions['gender'], gender) & find_elements(trajec_actions['age'], age) & find_elements_containing(trajec_actions[col], min(column_v)), f'{col}_raw'].min()
-    sim_filtered = pulse_trajec_actions[find_elements_starting_with(pulse_trajec_actions[col], column_v) & find_elements(pulse_trajec_actions['gender'], gender) & find_elements(pulse_trajec_actions['age'], age) & find_elements_starting_with(pulse_trajec_actions['actions'], action)].copy()
-    real_filtered = trajec_actions[find_elements(trajec_actions[col], column_v) & find_elements(trajec_actions['gender'], gender) & find_elements(pulse_trajec_actions['age'], age) & find_elements_starting_with(trajec_actions['actions'], action)].copy()
+    sim_filtered = sim_trajec_actions[find_elements_starting_with(sim_trajec_actions[col], column_v) & find_elements(sim_trajec_actions['gender'], gender) & find_elements(sim_trajec_actions['age'], age) & find_elements_starting_with(sim_trajec_actions['actions'], action)].copy()
+    real_filtered = trajec_actions[find_elements(trajec_actions[col], column_v) & find_elements(trajec_actions['gender'], gender) & find_elements(sim_trajec_actions['age'], age) & find_elements_starting_with(trajec_actions['actions'], action)].copy()
     if len(real_filtered) > 1 and len(sim_filtered) > 1:
         for i in range(n_iter):
             real_train = resample(real_filtered, n_samples=len(real_filtered))
@@ -108,16 +108,16 @@ def bootstrap_distribution(col, gender, age, action, column_v, trajec_actions, p
     return None
 
 
-def bootstrap_distribution_(col, gender, age, action, column_v, trajec_actions, pulse_trajec_actions, n_iter=100, i=3):
-    global pulse_data, MIMICtable
-    pulse_data = pulse_data.rename(columns={col: f'{col}_raw'})
+def bootstrap_distribution_(col, gender, age, action, column_v, trajec_actions, sim_trajec_actions, n_iter=100, i=3):
+    global sim_data, MIMICtable
+    sim_data = sim_data.rename(columns={col: f'{col}_raw'})
     MIMICtable = MIMICtable.rename(columns={col: f'{col}_raw'})
-    pulse = pulse_trajec_actions[['actions', 'gender', 'age', 'icustay_id', col]].merge(pulse_data[pulse_data['bloc'] == i+2], left_on=['icustay_id', 'gender'], right_on=['icustay_id', 'gender'])
+    sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', col]].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender'], right_on=['icustay_id', 'gender'])
     obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', col, f'prob_a_{i}']].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     df = pd.DataFrame()
     max_y = obs_data.loc[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements_containing(obs_data[col], max(column_v)), f'{col}_raw'].max()
     min_y = obs_data.loc[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements_containing(obs_data[col], min(column_v)), f'{col}_raw'].min()
-    sim_filtered = pulse[find_elements(pulse['gender'], gender) & find_elements(pulse['age'], age) & find_elements(pulse[col], column_v) & find_elements_starting_with(pulse['actions'], action)].copy()
+    sim_filtered = sim[find_elements(sim['gender'], gender) & find_elements(sim['age'], age) & find_elements(sim[col], column_v) & find_elements_starting_with(sim['actions'], action)].copy()
     real_filtered = obs_data[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements(obs_data[col], column_v) & find_elements_starting_with(obs_data['actions'], action)].copy()
     if len(real_filtered) > 1 and len(sim_filtered) > 1:
         for j in range(n_iter):
@@ -131,7 +131,7 @@ def bootstrap_distribution_(col, gender, age, action, column_v, trajec_actions, 
     return None
 
 
-def rejected_hypotheses_bootstrap(col, trajec_actions, pulse_trajec_actions):
+def rejected_hypotheses_bootstrap(col, trajec_actions, sim_trajec_actions):
     logging.info("calculating rejected hypotheses")
     state_actions = trajec_actions[['gender', 'age', 'actions', col]].copy()
     state_actions.loc[:,'a'] = state_actions['actions'].apply(tuple)
@@ -142,7 +142,7 @@ def rejected_hypotheses_bootstrap(col, trajec_actions, pulse_trajec_actions):
     p_values = pd.DataFrame()
     for index, row in state_actions.iterrows():
         logging.info(f"On index {index}/{total_hypotheses}")
-        df = bootstrap_distribution(col, row['gender'], row['age'], row['actions'], row[col], trajec_actions, pulse_trajec_actions)
+        df = bootstrap_distribution(col, row['gender'], row['age'], row['actions'], row[col], trajec_actions, sim_trajec_actions)
         if df is not None:
             sigma_ub = (df['UB']-df['Sim_exp_y']).var()
             exp_ub = (df['UB']-df['Sim_exp_y']).mean()
@@ -154,13 +154,13 @@ def rejected_hypotheses_bootstrap(col, trajec_actions, pulse_trajec_actions):
     rej_hyps = p_values[(p_values['p_lb']<0.05/total_hypotheses) ^ (p_values['p_ub']<0.05/total_hypotheses)].copy()
     for index, row in rej_hyps.iterrows():
         rej_hyps.loc[index, 'n_real'] = (find_elements(trajec_actions['gender'], row['gender']) & find_elements(trajec_actions['age'], row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions[col], row[col])).sum()
-        rej_hyps.loc[index, 'n_sim'] = (find_elements(pulse_trajec_actions['gender'], row['gender']) & find_elements(pulse_trajec_actions['age'], row['age']) & find_elements(pulse_trajec_actions['actions'], row['actions']) & find_elements(pulse_trajec_actions[col], row[col])).sum()
+        rej_hyps.loc[index, 'n_sim'] = (find_elements(sim_trajec_actions['gender'], row['gender']) & find_elements(sim_trajec_actions['age'], row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions[col], row[col])).sum()
     return len(rej_hyps), p_values, rej_hyps
 
 
-def do_hypothesis_testing(column, MIMICtable, pulse_data, col_bins_num, actionbloc):
+def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc):
     logging.info("doing hypothesis testing")
-    pulse_data = pulse_data.rename(columns={column: f'{column}_raw'})
+    sim_data = sim_data.rename(columns={column: f'{column}_raw'})
     
     col_ranked = rankdata(MIMICtable[column])/len(MIMICtable)
     col_bins = np.floor((col_ranked + 1/(col_bins_num + 0.0000001))*col_bins_num)
@@ -168,7 +168,7 @@ def do_hypothesis_testing(column, MIMICtable, pulse_data, col_bins_num, actionbl
     
     MIMICtable = MIMICtable.rename(columns={column: f'{column}_raw'})
     MIMICtable[column] = col_bins
-    pulse_data = pulse_data.merge(MIMICtable[['age', 'icustay_id', 'bloc', column]], left_on=['icustay_id', 'bloc'], right_on=['icustay_id', 'bloc'])
+    sim_data = sim_data.merge(MIMICtable[['age', 'icustay_id', 'bloc', column]], left_on=['icustay_id', 'bloc'], right_on=['icustay_id', 'bloc'])
     
     trajectories = pd.DataFrame()
     trajectories['t'] = np.arange(len(MIMICtable))%5
@@ -179,14 +179,14 @@ def do_hypothesis_testing(column, MIMICtable, pulse_data, col_bins_num, actionbl
     trajectories['A_t'] = actionbloc['action_bloc']
     trajectories = trajectories[trajectories['t']!=4]
     
-    pulse_trajecs = pd.DataFrame()
-    pulse_trajecs['t'] = np.arange(len(pulse_data))%5
-    pulse_trajecs['icustay_id'] = pulse_data['icustay_id']
-    pulse_trajecs = pulse_trajecs[pulse_trajecs['t']!=4]
-    pulse_trajecs = pulse_trajecs.merge(trajectories[['t','icustay_id', 'A_t', 'gender', 'age', column]], left_on=['icustay_id', 't'], right_on=['icustay_id', 't'])
+    sim_trajecs = pd.DataFrame()
+    sim_trajecs['t'] = np.arange(len(sim_data))%5
+    sim_trajecs['icustay_id'] = sim_data['icustay_id']
+    sim_trajecs = sim_trajecs[sim_trajecs['t']!=4]
+    sim_trajecs = sim_trajecs.merge(trajectories[['t','icustay_id', 'A_t', 'gender', 'age', column]], left_on=['icustay_id', 't'], right_on=['icustay_id', 't'])
     
     trajec_actions = get_trajec_actions(trajectories, column)
-    pulse_trajec_actions = get_pulse_trajec_actions(pulse_trajecs, column)
+    sim_trajec_actions = get_sim_trajec_actions(sim_trajecs, column)
     trajec_actions = compute_probs(trajec_actions, column)
     
     icustayids = MIMICtable['icustay_id'].unique()
@@ -195,8 +195,8 @@ def do_hypothesis_testing(column, MIMICtable, pulse_data, col_bins_num, actionbl
     mimic_data_last_time = MIMICtable[MIMICtable['bloc'] == 5].drop(columns=column)
     trajec_actions = trajec_actions.merge(mimic_data_last_time, left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
 
-    pulse_data_last_time = pulse_data[pulse_data['bloc'] == 5].drop(columns=column)
-    pulse_trajec_actions = pulse_trajec_actions.merge(pulse_data_last_time, left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+    sim_data_last_time = sim_data[sim_data['bloc'] == 5].drop(columns=column)
+    sim_trajec_actions = sim_trajec_actions.merge(sim_data_last_time, left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     
-    num_rej_hyps, p_values, rej_hyps = rejected_hypotheses_bootstrap(column, trajec_actions, pulse_trajec_actions)
-    return num_rej_hyps, p_values, rej_hyps, trajec_actions, pulse_trajec_actions
+    num_rej_hyps, p_values, rej_hyps = rejected_hypotheses_bootstrap(column, trajec_actions, sim_trajec_actions)
+    return num_rej_hyps, p_values, rej_hyps, trajec_actions, sim_trajec_actions

@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import os
 import glob
+import re
 from sklearn.cluster import KMeans
 from scipy.stats import rankdata
 from bareinboim_bounds.Utils import *
@@ -16,28 +17,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler()],
 )
-
-column_mappings = {
-    'Albumin - BloodConcentration (mg/L)': 'Albumin',
-    'ArterialCarbonDioxidePressure (mmHg)': 'paCO2',
-    'ArterialOxygenPressure (mmHg)': 'paO2',
-    'Bicarbonate - BloodConcentration (mg/L)': 'HCO3',
-    'BloodPH (None)': 'Arterial_pH',
-    'Calcium - BloodConcentration (mg/L)': 'Calcium',
-    'Chloride - BloodConcentration (mg/L)': 'Chloride',
-    'Creatinine - BloodConcentration (mg/L)': 'Creatinine',
-    'DiastolicArterialPressure (mmHg)': 'DiaBP',
-    'Glucose - BloodConcentration (mg/L)': 'Glucose',
-    'Lactate - BloodConcentration (mg/L)': 'Arterial_lactate',
-    'MeanArterialPressure (mmHg)': 'MeanBP',
-    'Potassium - BloodConcentration (mg/L)': 'Potassium',
-    'RespirationRate (1/min)': 'RR',
-    'SkinTemperature (degC)': 'Temp_C',
-    'Sodium - BloodConcentration (mg/L)': 'Sodium',
-    'SystolicArterialPressure (mmHg)': 'SysBP',
-    'WhiteBloodCellCount (ct/uL)': 'WBC_count',
-    'HeartRate (1/min)': 'HR'
-}
 
 column_names_unit = {
     'Albumin': 'Albumin Blood Concentration (mg/L)',
@@ -68,6 +47,100 @@ def write_to_file(file_name, col_name, num_rejected):
         f.write(col_name + ',' + str(num_rejected) + os.linesep)
 
 
+def load_pulse_data(sim_path, MIMICtable):
+    column_mappings = {
+        'Albumin - BloodConcentration (mg/L)': 'Albumin',
+        'ArterialCarbonDioxidePressure (mmHg)': 'paCO2',
+        'ArterialOxygenPressure (mmHg)': 'paO2',
+        'Bicarbonate - BloodConcentration (mg/L)': 'HCO3',
+        'BloodPH (None)': 'Arterial_pH',
+        'Calcium - BloodConcentration (mg/L)': 'Calcium',
+        'Chloride - BloodConcentration (mg/L)': 'Chloride',
+        'Creatinine - BloodConcentration (mg/L)': 'Creatinine',
+        'DiastolicArterialPressure (mmHg)': 'DiaBP',
+        'Glucose - BloodConcentration (mg/L)': 'Glucose',
+        'Lactate - BloodConcentration (mg/L)': 'Arterial_lactate',
+        'MeanArterialPressure (mmHg)': 'MeanBP',
+        'Potassium - BloodConcentration (mg/L)': 'Potassium',
+        'RespirationRate (1/min)': 'RR',
+        'SkinTemperature (degC)': 'Temp_C',
+        'Sodium - BloodConcentration (mg/L)': 'Sodium',
+        'SystolicArterialPressure (mmHg)': 'SysBP',
+        'WhiteBloodCellCount (ct/uL)': 'WBC_count',
+        'HeartRate (1/min)': 'HR'
+    }
+    extension = 'final_.csv'
+    all_filenames = [i for i in glob.glob(f'{args.sim_path}/*{extension}')]
+    sim_data = pd.concat([pd.read_csv(f) for f in all_filenames ])
+    sim_data = sim_data.rename(columns={'id': 'icustay_id'})
+    sim_data['icustay_id'] = sim_data['icustay_id'].astype(int)
+    sim_data = sim_data.reset_index(drop=True)
+    sim_data = sim_data.sort_values(by=['icustay_id', 'SimulationTime(s)'], ignore_index=True)
+    sim_data['bloc'] = np.arange(len(sim_data))%5 + 1
+
+    sim_rename = {}
+    for k, v in column_mappings.items():
+        sim_rename.update({k: f"{v}"})
+
+    sim_data = sim_data.rename(columns=sim_rename)
+    sim_data = sim_data.merge(MIMICtable[['gender', 'age', 'Weight_kg', 'icustay_id', 'bloc']], left_on=['icustay_id', 'bloc'], right_on=['icustay_id', 'bloc'])
+    sim_data = sim_data.rename(columns={'age': 'age_raw'})
+    return sim_data
+
+
+def load_biogears_data(sim_path, MIMICtable):
+    column_mappings = {
+        'Albumin-BloodConcentration(ug/mL)': 'Albumin',
+        'ArterialCarbonDioxidePressure(mmHg)': 'paCO2',
+        'ArterialOxygenPressure(mmHg)': 'paO2',
+        'Bicarbonate-BloodConcentration(ug/mL)': 'HCO3',
+        'ArterialBloodPH': 'Arterial_pH',
+        'Calcium-BloodConcentration(ug/mL)': 'Calcium',
+        'Chloride-BloodConcentration(ug/mL)': 'Chloride',
+        'Creatinine-BloodConcentration(ug/mL)': 'Creatinine',
+        'DiastolicArterialPressure(mmHg)': 'DiaBP',
+        'Glucose-BloodConcentration(ug/mL)': 'Glucose',
+        'Lactate-BloodConcentration(ug/mL)': 'Arterial_lactate',
+        'MeanArterialPressure(mmHg)': 'MeanBP',
+        'Potassium-BloodConcentration(ug/mL)': 'Potassium',
+        'RespirationRate(1/min)': 'RR',
+        'SkinTemperature(degC)': 'Temp_C',
+        'Sodium-BloodConcentration(ug/mL)': 'Sodium',
+        'SystolicArterialPressure(mmHg)': 'SysBP',
+        'WhiteBloodCellCount(ct/uL)': 'WBC_count',
+        'HeartRate(1/min)': 'HR'
+    }
+    extension = '.csv'
+    all_filenames = [i for i in glob.glob(f'{args.sim_path}/*{extension}')]
+    biogears_data = pd.DataFrame()
+    for f in tqdm(all_filenames):
+        if os.path.getsize(f) > 0:
+            df = pd.read_csv(f)
+            m = re.search('SimulateMIMIC_(.+?)_.csv', f)
+            if m:
+                icustay_id = m.group(1)
+                df['icustay_id'] = icustay_id
+            biogears_data = biogears_data.append(df, ignore_index=True)
+
+    times = [600.02, 3600.02, 7200.02, 10800.02, 14400.02]
+    biogears_data = biogears_data[biogears_data['Time(s)'].isin(times)].reset_index(drop=True)
+    biogears_data.loc['icustay_id'] = biogears_data['icustay_id'].astype(int)
+    icustayids = []
+    for icustay_id in biogears_data['icustay_id'].unique():
+        if (biogears_data['icustay_id'] == icustay_id).sum() == 5:
+            icustayids.append(icustay_id)            
+    biogears_data = biogears_data[biogears_data['icustay_id'].isin(icustayids)].reset_index(drop=True)
+    biogears_data = biogears_data.sort_values(by=['icustay_id', 'Time(s)'], ignore_index=True)
+    biogears_data['bloc'] = np.arange(len(biogears_data))%5 + 1
+    biogears_rename = {}
+    for k, v in column_mappings.items():
+        biogears_rename.update({k: f"{v}"})
+    biogears_data = biogears_data.rename(columns=biogears_rename)
+    biogears_data = biogears_data.merge(MIMICtable[['gender', 'age', 'Weight_kg', 'icustay_id', 'bloc']], left_on=['icustay_id', 'bloc'], right_on=['icustay_id', 'bloc'])
+    biogears_data = biogears_data.rename(columns={'age': 'age_raw'})
+    return biogears_data
+
+
 def main(args):
     MIMICtable = pd.read_csv(args.obs_path + '/MIMIC-1hourly-length-5.csv')
     MIMICtable = MIMICtable.sort_values(by=['icustay_id', 'bloc'], ignore_index=True)
@@ -77,25 +150,10 @@ def main(args):
     MIMICtable = MIMICtable.rename(columns={"age": "age_raw"})
     MIMICtable['age'] = age_bins
 
-    extension = 'final_.csv'
-    all_filenames = [i for i in glob.glob(f'{args.pulse_path}/*{extension}')]
-    pulse_data = pd.concat([pd.read_csv(f) for f in all_filenames ])
-    pulse_data = pulse_data.rename(columns={'id': 'icustay_id'})
-    pulse_data['icustay_id'] = pulse_data['icustay_id'].astype(int)
-    pulse_data = pulse_data.reset_index(drop=True)
-    pulse_data = pulse_data.sort_values(by=['icustay_id', 'SimulationTime(s)'], ignore_index=True)
-    pulse_data['bloc'] = np.arange(len(pulse_data))%5 + 1
-
-    pulse_rename = {}
-    for k, v in column_mappings.items():
-        pulse_rename.update({k: f"{v}"})
-
-    pulse_data = pulse_data.rename(columns=pulse_rename)
-
-    pulse_data = pulse_data.merge(MIMICtable[['gender', 'age', 'Weight_kg', 'icustay_id', 'bloc']], left_on=['icustay_id', 'bloc'], right_on=['icustay_id', 'bloc'])
-    pulse_data = pulse_data.rename(columns={'age': 'age_raw'})
-
-
+    if args.sim_name == "pulse":
+        sim_data = load_pulse_data(args.sim_path, MIMICtable)
+    else:
+        sim_data = load_biogears_data(args.sim_path, MIMICtable)
     logging.info('Creating action bins')
     nact = nra**2
     input_1hourly_nonzero = MIMICtable.loc[MIMICtable['input_1hourly']>0, 'input_1hourly']
@@ -127,19 +185,20 @@ def main(args):
     logging.info('Action bins created')
     logging.info(f'Outcome: {args.col_name}')
 
-    num_rej_hyps, p_values, rej_hyps, trajec_actions, pulse_trajec_actions  = do_hypothesis_testing(args.col_name, MIMICtable, pulse_data, args.col_bin_num, actionbloc)
+    num_rej_hyps, p_values, rej_hyps, trajec_actions, sim_trajec_actions  = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, actionbloc)
     write_to_file(f'{args.hyp_test_dir}/rej_hyp_nums.csv', args.col_name, num_rej_hyps)
     trajec_actions.to_csv(f'{args.hyp_test_dir}/trajec_actions_{args.col_name}.csv')
-    pulse_trajec_actions.to_csv(f'{args.hyp_test_dir}/pulse_trajec_actions_{args.col_name}.csv')
+    sim_trajec_actions.to_csv(f'{args.hyp_test_dir}/sim_trajec_actions_{args.col_name}.csv')
     rej_hyps.to_csv(f'{args.hyp_test_dir}/rej_hyps_{args.col_name}.csv')
 
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--col_name", help="Column name to run hypothesis tests for", type=str, required=True)
+    parser.add_argument("--sim_name", help="Simulator name (pulse/biogears)", type=str, default="biogears")
     parser.add_argument("--col_bin_num", help="number of column bins", type=int, default=5)
     parser.add_argument("--obs_path", help="path to observational data directory", default="/data/ziz/taufiq/export-dir")
-    parser.add_argument("--pulse_path", help="path to pulse data directory", default="/data/ziz/taufiq/pulse-data-5-step")
+    parser.add_argument("--sim_path", help="path to sim data directory", default="/data/ziz/taufiq/pulse-data-5-step")
     parser.add_argument("--hyp_test_dir", help="Directory to save hypothesis test info", default="/data/ziz/taufiq/hyp-test-dir")
     args = parser.parse_args()
     if not os.path.exists(f'{args.hyp_test_dir}/rej_hyp_nums.csv'):
