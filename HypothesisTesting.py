@@ -84,7 +84,6 @@ def load_pulse_data(sim_path, MIMICtable):
 
     sim_data = sim_data.rename(columns=sim_rename)
     sim_data = sim_data.merge(MIMICtable[['gender', 'age', 'Weight_kg', 'icustay_id', 'bloc']], left_on=['icustay_id', 'bloc'], right_on=['icustay_id', 'bloc'])
-    sim_data = sim_data.rename(columns={'age': 'age_raw'})
     return sim_data
 
 
@@ -119,7 +118,7 @@ def load_biogears_data(sim_path, MIMICtable):
             m = re.search('SimulateMIMIC_(.+?)_.csv', f)
             if m:
                 icustay_id = m.group(1)
-                df['icustay_id'] = icustay_id
+                df['icustay_id'] = int(icustay_id)
             biogears_data = biogears_data.append(df, ignore_index=True)
 
     times = [600.02, 3600.02, 7200.02, 10800.02, 14400.02]
@@ -137,7 +136,6 @@ def load_biogears_data(sim_path, MIMICtable):
         biogears_rename.update({k: f"{v}"})
     biogears_data = biogears_data.rename(columns=biogears_rename)
     biogears_data = biogears_data.merge(MIMICtable[['gender', 'age', 'Weight_kg', 'icustay_id', 'bloc']], left_on=['icustay_id', 'bloc'], right_on=['icustay_id', 'bloc'])
-    biogears_data = biogears_data.rename(columns={'age': 'age_raw'})
     return biogears_data
 
 
