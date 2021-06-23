@@ -168,7 +168,7 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc
     
     MIMICtable = MIMICtable.rename(columns={column: f'{column}_raw'})
     MIMICtable[column] = col_bins
-    sim_data = sim_data.merge(MIMICtable[['age', 'icustay_id', 'bloc', column]], left_on=['icustay_id', 'bloc'], right_on=['icustay_id', 'bloc'])
+    sim_data = sim_data.merge(MIMICtable[['age', 'icustay_id', 'bloc', column]], left_on=['icustay_id', 'bloc', 'age'], right_on=['icustay_id', 'bloc', 'age'])
     
     trajectories = pd.DataFrame()
     trajectories['t'] = np.arange(len(MIMICtable))%5
