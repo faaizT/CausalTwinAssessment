@@ -180,6 +180,7 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
                 exp_lb = (df['Sim_exp_y']-df['LB']).mean()
                 p_lb.append(st.norm.cdf(exp_lb/np.sqrt(sigma_lb)))
                 p = min(p, p_ub[-1] + p_lb[-1] - 1)
+        if df is not None:
             p_values = p_values.append({'gender': row['gender'], 'age': row['age'], 'actions': row['actions'], col: row[col], 'p': p, 'p_lb': p_lb, 'p_ub': p_ub}, ignore_index=True)
     rej_hyps = p_values[(p_values['p']<0.05/total_hypotheses/T)].copy()
     for index, row in rej_hyps.iterrows():
