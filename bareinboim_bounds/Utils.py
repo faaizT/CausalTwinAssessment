@@ -114,8 +114,8 @@ def bootstrap_distribution_(col, gender, age, action, column_v, trajec_actions, 
     sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', col]].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', col, f'prob_a_{i}']].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     df = pd.DataFrame()
-    max_y = obs_data.loc[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements_containing(obs_data[col], max(column_v)), f'{col}_raw'].max()
-    min_y = obs_data.loc[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements_containing(obs_data[col], min(column_v)), f'{col}_raw'].min()
+    max_y = obs_data.loc[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements_containing(obs_data[col], max(literal_eval(str(column_v)))), f'{col}_raw'].max()
+    min_y = obs_data.loc[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements_containing(obs_data[col], min(literal_eval(str(column_v)))), f'{col}_raw'].min()
     sim_filtered = sim[find_elements(sim['gender'], gender) & find_elements(sim['age'], age) & find_elements(sim[col], column_v) & find_elements_starting_with(sim['actions'], action)].copy()
     real_filtered = obs_data[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements(obs_data[col], column_v) & find_elements_starting_with(obs_data['actions'], action)].copy()
     if len(real_filtered) > 1 and len(sim_filtered) > 1:
@@ -228,5 +228,12 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc
     sim_data_last_time = sim_data[sim_data['bloc'] == 5].drop(columns=column)
     sim_trajec_actions = sim_trajec_actions.merge(sim_data_last_time, left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     
+    num_rej_hyps, p_values, rej_hyps = rejected_hypotheses_bootstrap_trajectories(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
+    return num_rej_hyps, p_values, rej_hyps, trajec_actions, sim_trajec_actions
+
+def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable):
+    rej_hyps = pd.read_csv(f"{directory}/rej_hyps_{column}.csv", converters={'actions': eval})
+    trajec_actions = pd.read_csv(f"{directory}/trajec_actions_{column}.csv", converters={'actions': eval})
+    sim_trajec_actions = pd.read_csv(f"{directory}/pulse_trajec_actions_{column}.csv", converters={'actions': eval})
     num_rej_hyps, p_values, rej_hyps = rejected_hypotheses_bootstrap_trajectories(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
     return num_rej_hyps, p_values, rej_hyps, trajec_actions, sim_trajec_actions
