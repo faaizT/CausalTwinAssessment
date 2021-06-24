@@ -108,8 +108,7 @@ def bootstrap_distribution(col, gender, age, action, column_v, trajec_actions, s
     return None
 
 
-def bootstrap_distribution_(col, gender, age, action, column_v, trajec_actions, sim_trajec_actions, n_iter=100, i=3):
-    global sim_data, MIMICtable
+def bootstrap_distribution_(col, gender, age, action, column_v, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=3):
     sim_data = sim_data.rename(columns={col: f'{col}_raw'})
     MIMICtable = MIMICtable.rename(columns={col: f'{col}_raw'})
     sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', col]].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
@@ -158,7 +157,7 @@ def rejected_hypotheses_bootstrap(col, trajec_actions, sim_trajec_actions):
     return len(rej_hyps), p_values, rej_hyps
 
 
-def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_actions):
+def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable):
     T = 4
     state_actions = trajec_actions[['gender', 'age', 'actions', col]].copy()
     state_actions.loc[:,'a'] = state_actions['actions'].apply(tuple)
@@ -171,7 +170,7 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
         p = 1
         p_ub, p_lb = [], []
         for t in range(T):
-            df = bootstrap_distribution_(col, row['gender'], row['age'], row['actions'], row[col], trajec_actions, sim_trajec_actions, n_iter=100, i=t)
+            df = bootstrap_distribution_(col, row['gender'], row['age'], row['actions'], row[col], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=t)
             if df is not None:
                 sigma_ub = (df['UB']-df['Sim_exp_y']).var()
                 exp_ub = (df['UB']-df['Sim_exp_y']).mean()
@@ -229,5 +228,5 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc
     sim_data_last_time = sim_data[sim_data['bloc'] == 5].drop(columns=column)
     sim_trajec_actions = sim_trajec_actions.merge(sim_data_last_time, left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     
-    num_rej_hyps, p_values, rej_hyps = rejected_hypotheses_bootstrap_trajectories(column, trajec_actions, sim_trajec_actions)
+    num_rej_hyps, p_values, rej_hyps = rejected_hypotheses_bootstrap_trajectories(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
     return num_rej_hyps, p_values, rej_hyps, trajec_actions, sim_trajec_actions
