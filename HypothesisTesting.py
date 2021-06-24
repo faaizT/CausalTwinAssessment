@@ -42,9 +42,9 @@ column_names_unit = {
 }
 
 
-def write_to_file(file_name, col_name, num_rejected):
+def write_to_file(file_name, col_name, num_rejected, total_hypotheses):
     with open(file_name, 'a', 1) as f:
-        f.write(col_name + ',' + str(num_rejected) + os.linesep)
+        f.write(col_name + ',' + str(num_rejected) + ',' + str(total_hypotheses) + os.linesep)
 
 
 def load_pulse_data(sim_path, MIMICtable):
@@ -187,10 +187,10 @@ def main(args):
     logging.info('Action bins created')
     logging.info(f'Outcome: {args.col_name}')
     if args.saved_dir is not None:
-        num_rej_hyps, p_values, rej_hyps, trajec_actions, sim_trajec_actions  = do_hypothesis_testing_saved(args.col_name, args.saved_dir, sim_data, MIMICtable)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing_saved(args.col_name, args.saved_dir, sim_data, MIMICtable)
     else:
-        num_rej_hyps, p_values, rej_hyps, trajec_actions, sim_trajec_actions  = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, actionbloc)
-    write_to_file(f'{args.hyp_test_dir}/rej_hyp_nums.csv', args.col_name, num_rej_hyps)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, actionbloc)
+    write_to_file(f'{args.hyp_test_dir}/rej_hyp_nums.csv', args.col_name, num_rej_hyps, total_hypotheses)
     trajec_actions.to_csv(f'{args.hyp_test_dir}/trajec_actions_{args.col_name}.csv')
     sim_trajec_actions.to_csv(f'{args.hyp_test_dir}/sim_trajec_actions_{args.col_name}.csv')
     rej_hyps.to_csv(f'{args.hyp_test_dir}/rej_hyps_{args.col_name}.csv')
@@ -208,7 +208,6 @@ if __name__=="__main__":
     args = parser.parse_args()
     if not os.path.exists(f'{args.hyp_test_dir}/rej_hyp_nums.csv'):
         with open(f'{args.hyp_test_dir}/rej_hyp_nums.csv', "w") as f:
-            f.write('Outcome Y,# rejected hypotheses' + os.linesep)
+            f.write('Outcome Y,# rejected hypotheses,Total # hypotheses' + os.linesep)
 
     main(args)
-
