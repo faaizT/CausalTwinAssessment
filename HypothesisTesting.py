@@ -42,9 +42,9 @@ column_names_unit = {
 }
 
 
-def write_to_file(file_name, col_name, num_rejected):
+def write_to_file(file_name, col_name, num_rejected, total_hypotheses):
     with open(file_name, 'a', 1) as f:
-        f.write(col_name + ',' + str(num_rejected) + os.linesep)
+        f.write(col_name + ',' + str(num_rejected) + ',' + str(total_hypotheses) + os.linesep)
 
 
 def load_pulse_data(sim_path, MIMICtable):
@@ -140,6 +140,10 @@ def load_biogears_data(sim_path, MIMICtable):
 
 
 def main(args):
+    if args.saved_dir is not None:
+        logging.info(f"Using saved processed data from dir {args.saved_dir}")
+    else:
+        logging.info("Not using saved data")
     MIMICtable = pd.read_csv(args.obs_path + '/MIMIC-1hourly-length-5.csv')
     MIMICtable = MIMICtable.sort_values(by=['icustay_id', 'bloc'], ignore_index=True)
     age_ranked = rankdata(MIMICtable['age'])/len(MIMICtable)
@@ -182,9 +186,11 @@ def main(args):
     actionbloc = actionbloc.astype({'action_bloc':'int32'})
     logging.info('Action bins created')
     logging.info(f'Outcome: {args.col_name}')
-
-    num_rej_hyps, p_values, rej_hyps, trajec_actions, sim_trajec_actions  = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, actionbloc)
-    write_to_file(f'{args.hyp_test_dir}/rej_hyp_nums.csv', args.col_name, num_rej_hyps)
+    if args.saved_dir is not None:
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing_saved(args.col_name, args.saved_dir, sim_data, MIMICtable)
+    else:
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, actionbloc)
+    write_to_file(f'{args.hyp_test_dir}/rej_hyp_nums.csv', args.col_name, num_rej_hyps, total_hypotheses)
     trajec_actions.to_csv(f'{args.hyp_test_dir}/trajec_actions_{args.col_name}.csv')
     sim_trajec_actions.to_csv(f'{args.hyp_test_dir}/sim_trajec_actions_{args.col_name}.csv')
     rej_hyps.to_csv(f'{args.hyp_test_dir}/rej_hyps_{args.col_name}.csv')
@@ -197,11 +203,11 @@ if __name__=="__main__":
     parser.add_argument("--col_bin_num", help="number of column bins", type=int, default=5)
     parser.add_argument("--obs_path", help="path to observational data directory", default="/data/ziz/taufiq/export-dir")
     parser.add_argument("--sim_path", help="path to sim data directory", default="/data/ziz/taufiq/biogears-data-5step")
-    parser.add_argument("--hyp_test_dir", help="Directory to save hypothesis test info", default="/data/ziz/taufiq/hyp-test-dir-biogears")
+    parser.add_argument("--hyp_test_dir", help="Directory to save hypothesis test info", default="/data/ziz/taufiq/hyp-test-dir-biogears-trajecs")
+    parser.add_argument("--saved_dir", help="Location of saved processed data", default=None)
     args = parser.parse_args()
     if not os.path.exists(f'{args.hyp_test_dir}/rej_hyp_nums.csv'):
         with open(f'{args.hyp_test_dir}/rej_hyp_nums.csv', "w") as f:
-            f.write('Outcome Y,# rejected hypotheses' + os.linesep)
+            f.write('Outcome Y,# rejected hypotheses,Total # hypotheses' + os.linesep)
 
     main(args)
-
