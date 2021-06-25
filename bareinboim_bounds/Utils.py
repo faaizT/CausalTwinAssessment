@@ -238,6 +238,6 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc
 def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable):
     rej_hyps = pd.read_csv(f"{directory}/rej_hyps_{column}.csv", converters={'actions': eval, column: eval})
     trajec_actions = pd.read_csv(f"{directory}/trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
-    sim_trajec_actions = pd.read_csv(f"{directory}/pulse_trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
+    sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
     num_rej_hyps, p_values, rej_hyps, total_hypotheses = rejected_hypotheses_bootstrap_trajectories(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
     return num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions

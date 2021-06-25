@@ -199,11 +199,11 @@ def main(args):
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--col_name", help="Column name to run hypothesis tests for", type=str, required=True)
-    parser.add_argument("--sim_name", help="Simulator name (pulse/biogears)", type=str, default="pulse")
+    parser.add_argument("--sim_name", help="Simulator name (pulse/biogears)", type=str, default="biogears")
     parser.add_argument("--col_bin_num", help="number of column bins", type=int, default=5)
     parser.add_argument("--obs_path", help="path to observational data directory", default="/data/ziz/taufiq/export-dir")
-    parser.add_argument("--sim_path", help="path to sim data directory", default="/data/ziz/taufiq/pulse-data-5-step")
-    parser.add_argument("--hyp_test_dir", help="Directory to save hypothesis test info", default="/data/ziz/taufiq/hyp-test-dir-pulse-trajecs")
+    parser.add_argument("--sim_path", help="path to sim data directory", default="/data/ziz/taufiq/biogears-data-5step")
+    parser.add_argument("--hyp_test_dir", help="Directory to save hypothesis test info", default="/data/ziz/taufiq/hyp-test-dir-biogears-trajecs")
     parser.add_argument("--saved_dir", help="Location of saved processed data", default=None)
     args = parser.parse_args()
     if not os.path.exists(f'{args.hyp_test_dir}/rej_hyp_nums.csv'):
