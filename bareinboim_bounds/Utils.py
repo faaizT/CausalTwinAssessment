@@ -240,14 +240,21 @@ def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bi
     trajec_actions = pd.read_csv(f"{directory}/trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
     sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
     if sofa_bin == 0:
+        logging.info(f'Sofa bin: {sofa_bin}')
         trajec_actions = trajec_actions[trajec_actions['SOFA'] <= 6]
     elif sofa_bin == 1:
-        trajec_actions = trajec_actions[trajec_actions['SOFA'] <= 12]
+        logging.info(f'Sofa bin: {sofa_bin}')
+        trajec_actions = trajec_actions[(trajec_actions['SOFA'] <= 12) & (trajec_actions['SOFA'] > 6)]
     elif sofa_bin == 2:
-        trajec_actions = trajec_actions[trajec_actions['SOFA'] <= 18]
+        logging.info(f'Sofa bin: {sofa_bin}')
+        trajec_actions = trajec_actions[(trajec_actions['SOFA'] <= 18) & (trajec_actions['SOFA'] > 12)]
     elif sofa_bin == 3:
-        trajec_actions = trajec_actions[trajec_actions['SOFA'] <= 24]
+        logging.info(f'Sofa bin: {sofa_bin}')
+        trajec_actions = trajec_actions[(trajec_actions['SOFA'] <= 24) & (trajec_actions['SOFA'] > 18)]
     sim_trajec_actions = sim_trajec_actions[sim_trajec_actions['icustay_id'].isin(trajec_actions['icustay_id'])]
+    sim_data = sim_data[sim_data['icustay_id'].isin(trajec_actions['icustay_id'])]
+    MIMICtable = MIMICtable[MIMICtable['icustay_id'].isin(trajec_actions['icustay_id'])]
+    logging.info(f'Filtered trajectory length: {len(trajec_actions)}')
 
     num_rej_hyps, p_values, rej_hyps, total_hypotheses = rejected_hypotheses_bootstrap_trajectories(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
     return num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions
