@@ -185,10 +185,13 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
                 p = min(p, p_ub[-1] + p_lb[-1] - 1)
         if df is not None:
             p_values = p_values.append({'gender': row['gender'], 'age': row['age'], 'actions': row['actions'], col: row[col], 'p': p, 'p_lb': p_lb, 'p_ub': p_ub}, ignore_index=True)
-    rej_hyps = p_values[(p_values['p']<0.05/total_hypotheses/T)].copy()
-    for index, row in rej_hyps.iterrows():
-        rej_hyps.loc[index, 'n_real'] = (find_elements(trajec_actions['gender'], row['gender']) & find_elements(trajec_actions['age'], row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions[col], row[col])).sum()
-        rej_hyps.loc[index, 'n_sim'] = (find_elements(sim_trajec_actions['gender'], row['gender']) & find_elements(sim_trajec_actions['age'], row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions[col], row[col])).sum()
+    if len(p_values) > 0:
+        rej_hyps = p_values[(p_values['p']<0.05/total_hypotheses/T)].copy()
+        for index, row in rej_hyps.iterrows():
+            rej_hyps.loc[index, 'n_real'] = (find_elements(trajec_actions['gender'], row['gender']) & find_elements(trajec_actions['age'], row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions[col], row[col])).sum()
+            rej_hyps.loc[index, 'n_sim'] = (find_elements(sim_trajec_actions['gender'], row['gender']) & find_elements(sim_trajec_actions['age'], row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions[col], row[col])).sum()
+    else:
+        rej_hyps = pd.DataFrame()
     return len(rej_hyps), p_values, rej_hyps, total_hypotheses
 
 
