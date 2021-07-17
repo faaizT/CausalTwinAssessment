@@ -143,8 +143,8 @@ def bootstrap_distribution_deprecated(col, gender, age, action, column_v, trajec
     df = pd.DataFrame()
     max_y = obs_data.loc[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements_containing(obs_data[col], max(column_v)), f'{col}_raw'].max()
     min_y = obs_data.loc[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements_containing(obs_data[col], min(column_v)), f'{col}_raw'].min()
-    sim_filtered = sim[find_elements(sim['gender'], gender) & find_elements(sim['age'], age) & find_elements(sim[col], column_v) & find_elements_starting_with(sim['actions'], action)].copy()
-    real_filtered = obs_data[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements(obs_data[col], column_v) & find_elements_starting_with(obs_data['actions'], action)].copy()
+    sim_filtered = sim[find_elements(sim['gender'], gender) & find_elements(sim['age'], age) & find_elements_starting_with(sim[col], column_v[:i+1]) & find_elements_starting_with(sim['actions'], action[:i+1])].copy()
+    real_filtered = obs_data[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age) & find_elements_starting_with(obs_data[col], column_v[:i+1]) & find_elements_starting_with(obs_data['actions'], action[:i+1])].copy()
     if len(real_filtered) > 1 and len(sim_filtered) > 1:
         for j in range(n_iter):
             real_train = resample(real_filtered, n_samples=len(real_filtered))
@@ -241,10 +241,13 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
                 p = min(p, ((df['LB'] <= df['Sim_exp_y']) & (df['UB'] >= df['Sim_exp_y'])).sum()/len(df))
         if df is not None:
             p_values = p_values.append({'gender': row['gender'], 'age': row['age'], 'actions': row['actions'], col: row[col], 'p': p}, ignore_index=True)
-    rej_hyps = p_values[(p_values['p']<0.05/total_hypotheses/T)].copy()
-    for index, row in rej_hyps.iterrows():
-        rej_hyps.loc[index, 'n_real'] = (find_elements(trajec_actions['gender'], row['gender']) & find_elements(trajec_actions['age'], row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions[col], row[col])).sum()
-        rej_hyps.loc[index, 'n_sim'] = (find_elements(sim_trajec_actions['gender'], row['gender']) & find_elements(sim_trajec_actions['age'], row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions[col], row[col])).sum()
+    if len(p_values) > 0:
+        rej_hyps = p_values[(p_values['p']<0.05/total_hypotheses/T)].copy()
+        for index, row in rej_hyps.iterrows():
+            rej_hyps.loc[index, 'n_real'] = (find_elements(trajec_actions['gender'], row['gender']) & find_elements(trajec_actions['age'], row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions[col], row[col])).sum()
+            rej_hyps.loc[index, 'n_sim'] = (find_elements(sim_trajec_actions['gender'], row['gender']) & find_elements(sim_trajec_actions['age'], row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions[col], row[col])).sum()
+    else:
+        rej_hyps = pd.DataFrame()
     return len(rej_hyps), p_values, rej_hyps, total_hypotheses
 
 
@@ -290,9 +293,26 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc
     num_rej_hyps, p_values, rej_hyps, total_hypotheses = rejected_hypotheses_bootstrap_trajectories(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
     return num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions
 
-def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable):
+def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bin):
     rej_hyps = pd.read_csv(f"{directory}/rej_hyps_{column}.csv", converters={'actions': eval, column: eval})
     trajec_actions = pd.read_csv(f"{directory}/trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
     sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
+    if sofa_bin == 0:
+        logging.info(f'Sofa bin: {sofa_bin}')
+        trajec_actions = trajec_actions[trajec_actions['SOFA'] <= 6]
+    elif sofa_bin == 1:
+        logging.info(f'Sofa bin: {sofa_bin}')
+        trajec_actions = trajec_actions[(trajec_actions['SOFA'] <= 12) & (trajec_actions['SOFA'] > 6)]
+    elif sofa_bin == 2:
+        logging.info(f'Sofa bin: {sofa_bin}')
+        trajec_actions = trajec_actions[(trajec_actions['SOFA'] <= 18) & (trajec_actions['SOFA'] > 12)]
+    elif sofa_bin == 3:
+        logging.info(f'Sofa bin: {sofa_bin}')
+        trajec_actions = trajec_actions[(trajec_actions['SOFA'] <= 24) & (trajec_actions['SOFA'] > 18)]
+    sim_trajec_actions = sim_trajec_actions[sim_trajec_actions['icustay_id'].isin(trajec_actions['icustay_id'])]
+    sim_data = sim_data[sim_data['icustay_id'].isin(trajec_actions['icustay_id'])]
+    MIMICtable = MIMICtable[MIMICtable['icustay_id'].isin(trajec_actions['icustay_id'])]
+    logging.info(f'Filtered trajectory length: {len(trajec_actions)}')
+
     num_rej_hyps, p_values, rej_hyps, total_hypotheses = rejected_hypotheses_bootstrap_trajectories(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
     return num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions
