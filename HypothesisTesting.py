@@ -189,7 +189,7 @@ def main(args):
     if args.saved_dir is not None:
         num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing_saved(args.col_name, args.saved_dir, sim_data, MIMICtable, args.sofa_bin)
     else:
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, actionbloc)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, actionbloc, args.hyp_test_dir)
     
     write_to_file(f'{args.hyp_test_dir}/rej_hyp_nums.csv', args.col_name, num_rej_hyps, total_hypotheses, args.sofa_bin)
     if args.sofa_bin is None:
