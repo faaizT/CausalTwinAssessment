@@ -251,13 +251,13 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
     return len(rej_hyps), p_values, rej_hyps, total_hypotheses
 
 
-def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc):
+def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc, hyp_test_dir):
     logging.info("doing hypothesis testing")
     sim_data = sim_data.rename(columns={column: f'{column}_raw'})
     
     col_ranked = rankdata(MIMICtable[column])/len(MIMICtable)
     col_bins = np.floor((col_ranked + 1/(col_bins_num + 0.0000001))*col_bins_num)
-    median_col = [MIMICtable.loc[col_bins==1, column].median(), MIMICtable.loc[col_bins==2, column].median(), MIMICtable.loc[col_bins==3, column].median(), MIMICtable.loc[col_bins==4, column].median()]
+    # median_col = [MIMICtable.loc[col_bins==1, column].median(), MIMICtable.loc[col_bins==2, column].median(), MIMICtable.loc[col_bins==3, column].median(), MIMICtable.loc[col_bins==4, column].median()]
     
     MIMICtable = MIMICtable.rename(columns={column: f'{column}_raw'})
     MIMICtable[column] = col_bins
@@ -290,11 +290,12 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc
     sim_data_last_time = sim_data[sim_data['bloc'] == 5].drop(columns=column)
     sim_trajec_actions = sim_trajec_actions.merge(sim_data_last_time, left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     
+    trajec_actions.to_csv(f'{hyp_test_dir}/trajec_actions_{column}.csv')
+    sim_trajec_actions.to_csv(f'{hyp_test_dir}/sim_trajec_actions_{column}.csv')
     num_rej_hyps, p_values, rej_hyps, total_hypotheses = rejected_hypotheses_bootstrap_trajectories(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
     return num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions
 
 def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bin):
-    rej_hyps = pd.read_csv(f"{directory}/rej_hyps_{column}.csv", converters={'actions': eval, column: eval})
     trajec_actions = pd.read_csv(f"{directory}/trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
     sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
     if sofa_bin == 0:
