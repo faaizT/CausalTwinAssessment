@@ -296,7 +296,6 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc
     return num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions
 
 def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bin):
-    rej_hyps = pd.read_csv(f"{directory}/rej_hyps_{column}.csv", converters={'actions': eval, column: eval})
     trajec_actions = pd.read_csv(f"{directory}/trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
     sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
     if sofa_bin == 0:
