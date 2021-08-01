@@ -36,8 +36,8 @@ if __name__=="__main__":
     parser.add_argument("--obs_path", help="path to observational data directory", default="/data/ziz/taufiq/export-dir")
     parser.add_argument("--sim_path", help="path to sim data directory", default="/data/ziz/taufiq/pulse-data-5-step")
     parser.add_argument("--models_dir", help="Directory to save trained models", required=True)
-    parser.add_argument("--nr_reps", help="Number of models to be trained", default=2)
-    parser.add_argument("--nra", help="Number of action bins", default=5)
+    parser.add_argument("--nr_reps", help="Number of models to be trained", default=2, type=int)
+    parser.add_argument("--nra", help="Number of action bins", default=5, type=int)
     args = parser.parse_args()
 
     wandb.init(project="Manski-Regression", name=f"{args.sim_name}-{args.col_name}")

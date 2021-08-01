@@ -39,6 +39,19 @@ column_mappings = {
     'HeartRate (1/min)': 'HR'
 }
 
+def log_policy_accuracy(policy, Xtestmimic, Ytest, epoch, model):
+    correct = 0
+    total = 0
+    # since we're not training, we don't need to calculate the gradients for our outputs
+    with torch.no_grad():
+        outputs = policy(Xtestmimic)
+        # the class with the highest energy is what we choose as prediction
+        _, predicted = torch.max(outputs.data, 1)
+        total += Xtestmimic.size(0)
+        correct += (predicted == Ytest).sum().item()
+
+    wandb.log({'epoch': epoch, f'acc-{model}': 100 * correct / total})
+
 def train_ysim(MIMIC_data_combined, pulse_data_combined, pulseraw, actionbloc, models_dir, nr_reps, col_name):
     icuuniqueids = pulse_data_combined['icustay_id'].unique()
     for model in tqdm(range(nr_reps)):
@@ -193,6 +206,7 @@ def train_policies(MIMIC_data_combined, MIMICraw, actionbloc, models_dir, nr_rep
                     for test_data, test_label in testloader:
                         test_loss += loss_func(policy(test_data), test_label)
                     wandb.log({'epoch': epoch, f'TL pol - mdl {model}': test_loss})
+                log_policy_accuracy(policy, Xtestmimic, Ytest, epoch, model)
         torch.save(policy.state_dict(), f'{models_dir}/policy_{model}')
 
 def preprocess_data(args):
@@ -215,7 +229,7 @@ def preprocess_data(args):
     
     MIMICtable_filtered_t0 = MIMICtable[MIMICtable['bloc']==1].reset_index()
     MIMICtable_filtered_t1 = MIMICtable[MIMICtable['bloc']==2][[
-        'icustay_id', 'RR', 'HR', 'SysBP', 'MeanBP', 'DiaBP', 'RR',
+        'icustay_id', 'RR', 'HR', 'SysBP', 'MeanBP', 'DiaBP',
         'SpO2', 'Temp_C', 'FiO2_1', 'Potassium', 'Sodium', 'Chloride',
         'Glucose', 'BUN', 'Creatinine', 'Magnesium', 'Calcium', 'Ionised_Ca',
         'CO2_mEqL', 'SGOT', 'SGPT', 'Total_bili', 'Albumin', 'Hb', 'WBC_count',
