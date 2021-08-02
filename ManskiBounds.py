@@ -21,12 +21,12 @@ logging.basicConfig(
 )
 
 def main(args):
-    MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMIC_data_combined, pulse_data_combined, MIMICraw, pulseraw = preprocess_data(args)
+    MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMIC_data_combined, MIMICtable, pulse_data_combined, MIMICraw, pulseraw = preprocess_data(args)
     actionbloc = create_action_bins(MIMICtable_filtered_t0, args.nra)
     train_policies(MIMIC_data_combined, MIMICraw, actionbloc, args.models_dir, args.nr_reps)
-    train_yobs(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICraw, actionbloc, args.models_dir, args.nr_reps, args.col_name)
-    train_yminmax(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICraw, actionbloc, args.models_dir, args.nr_reps, args.col_name)
-    train_ysim(MIMIC_data_combined, pulse_data_combined, pulseraw, actionbloc, args.models_dir, args.nr_reps, args.col_name)
+    train_yobs(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICraw, MIMICtable, actionbloc, args.models_dir, args.nr_reps, args.col_name)
+    train_yminmax(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICraw, MIMICtable, actionbloc, args.models_dir, args.nr_reps, args.col_name)
+    train_ysim(MIMIC_data_combined, MIMICtable, pulse_data_combined, pulseraw, actionbloc, args.models_dir, args.nr_reps, args.col_name)
 
 
 if __name__=="__main__":
@@ -40,7 +40,7 @@ if __name__=="__main__":
     parser.add_argument("--nra", help="Number of action bins", default=5, type=int)
     args = parser.parse_args()
 
-    wandb.init(project="Manski-Regression", name=f"{args.sim_name}-{args.col_name}")
+    wandb.init(project="Manski-Regression", name=f"{args.sim_name}-{args.col_name}-2")
 
     main(args)
 
