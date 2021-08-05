@@ -39,6 +39,9 @@ column_mappings = {
     'HeartRate (1/min)': 'HR'
 }
 
+cols = ['paCO2', 'paO2', 'HCO3', 'Arterial_pH', 'Calcium', 'Chloride', 'DiaBP', 'Glucose', 'MeanBP', 'Potassium', 'RR', 'Temp_C', 'Sodium', 'SysBP', 'HR']
+
+
 def log_policy_accuracy(policy, Xtestmimic, Ytest, epoch, model):
     correct = 0
     total = 0
@@ -52,7 +55,7 @@ def log_policy_accuracy(policy, Xtestmimic, Ytest, epoch, model):
 
     wandb.log({'epoch': epoch, f'acc-{model}': 100 * correct / total})
 
-def train_ysim(MIMIC_data_combined, MIMICtable, pulse_data_combined, pulseraw, actionbloc, models_dir, nr_reps, col_name):
+def train_ysim_deprecated(MIMIC_data_combined, MIMICtable, pulse_data_combined, pulseraw, actionbloc, models_dir, nr_reps, col_name):
     icuuniqueids = pulse_data_combined['icustay_id'].unique()
     for model in tqdm(range(nr_reps)):
         grp = np.floor(5*np.random.rand(len(icuuniqueids))+1)
@@ -99,7 +102,112 @@ def train_ysim(MIMIC_data_combined, MIMICtable, pulse_data_combined, pulseraw, a
         torch.save(net.state_dict(), f'{models_dir}/ysim_{model}')
 
 
-def train_yminmax(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICraw, MIMICtable, actionbloc, models_dir, nr_reps, col_name):
+def train_ysim(MIMICtable, pulse_data_t0_tr, pulse_data_t1_tr, pulse_data_t1, pulseraw, actionbloc, models_dir, col_name, model):
+    pulseraw_tr = pulse_data_t0_tr[['icustay_id']].merge(pulseraw, on='icustay_id')
+    pulseraw_test = pulseraw[~pulseraw['icustay_id'].isin(pulse_data_t0_tr['icustay_id'])]
+    X = torch.FloatTensor(pulseraw_tr.drop(columns=['icustay_id']).values)
+    Xtestmimic = torch.FloatTensor(pulseraw_test.drop(columns=['icustay_id']).values)
+    actions_tr = pulseraw_tr[['icustay_id']].merge(actionbloc, on='icustay_id')
+    actions_test = pulseraw_test[['icustay_id']].merge(actionbloc, on='icustay_id')
+    A = torch.tensor(actions_tr['action_bloc'].values).to(torch.long)-1
+    Atest = torch.tensor(actions_test['action_bloc'].values).to(torch.long)-1
+    Y = torch.FloatTensor(pulse_data_t1_tr[col_name].values).unsqueeze(dim=1)
+    Ytest = torch.FloatTensor(pulseraw_test[['icustay_id']].merge(pulse_data_t1, on='icustay_id')[col_name].values).unsqueeze(dim=1)
+    Y = (Y - MIMICtable[col_name].mean())/MIMICtable[col_name].std()
+    Ytest = (Ytest - MIMICtable[col_name].mean())/MIMICtable[col_name].std()
+
+    train = data_utils.TensorDataset(torch.column_stack((X, A)), Y)
+    trainloader = torch.utils.data.DataLoader(train, batch_size=32)
+    test = data_utils.TensorDataset(torch.column_stack((Xtestmimic, Atest)), Ytest)
+    testloader = torch.utils.data.DataLoader(test, batch_size=32)
+
+    net = Net(n_feature=X.shape[1] + 1, n_hidden=10, n_output=1)
+    optimizer = torch.optim.SGD(net.parameters(), lr=0.001, weight_decay=0.1)
+    loss_func = torch.nn.MSELoss()
+
+    for epoch in tqdm(range(200)):
+        for X, Y in trainloader:
+            prediction = net(X)     # input x and predict based on x
+
+            loss = loss_func(prediction, Y)     # must be (1. nn output, 2. target)
+
+            optimizer.zero_grad()   # clear gradients for next train
+            loss.backward()         # backpropagation, compute gradients
+            optimizer.step()        # apply gradients
+        if (epoch+1) % 10 == 0:
+            with torch.no_grad():
+                test_loss = 0
+                for Xtest, Ytest in testloader:
+                    test_loss += loss_func(net(Xtest), Ytest)
+                test_loss = test_loss/len(testloader)
+                wandb.log({'epoch': epoch, f'ysim {col_name} - {model}': test_loss})
+    
+    torch.save(net.state_dict(), f'{models_dir}/ysim_{col_name}_{model}')
+
+
+def train_yminmax(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, models_dir, col_name, model):
+    MIMICraw_tr = MIMICtable_filtered_t0_tr[['icustay_id']].merge(MIMICraw, on='icustay_id')
+    MIMICraw_test = MIMICraw[~MIMICraw['icustay_id'].isin(MIMICtable_filtered_t0_tr['icustay_id'])]
+    X = torch.FloatTensor(MIMICraw_tr.drop(columns=['icustay_id']).values)
+    Xtestmimic = torch.FloatTensor(MIMICraw_test.drop(columns=['icustay_id']).values)
+    Y = torch.FloatTensor(MIMICtable_filtered_t1_tr[col_name].values).unsqueeze(dim=1)
+    Ytest = torch.FloatTensor(MIMICraw_test[['icustay_id']].merge(MIMICtable_filtered_t1, on='icustay_id')[col_name].values).unsqueeze(dim=1)
+
+    Y = (Y - MIMICtable[col_name].mean())/MIMICtable[col_name].std()
+    Ytest = (Ytest - MIMICtable[col_name].mean())/MIMICtable[col_name].std()
+    train = data_utils.TensorDataset(X, Y)
+    trainloader = torch.utils.data.DataLoader(train, batch_size=32)
+    test = data_utils.TensorDataset(Xtestmimic, Ytest)
+    testloader = torch.utils.data.DataLoader(test, batch_size=32)
+
+    quantile_net = QuantileNet(n_feature=X.shape[1], n_hidden=10, n_output=1)
+    optimizer = torch.optim.SGD(quantile_net.parameters(), lr=0.001)
+    loss_func = PinballLoss(quantile=0.001, reduction='mean')
+
+    for epoch in tqdm(range(200)):
+        for X, Y in trainloader:
+            prediction = quantile_net(X)     # input x and predict based on x
+
+            loss = loss_func(prediction, Y)     # must be (1. nn output, 2. target)
+
+            optimizer.zero_grad()   # clear gradients for next train
+            loss.backward()         # backpropagation, compute gradients
+            optimizer.step()        # apply gradients
+        if (epoch+1)%10 == 0:
+            with torch.no_grad():
+                test_loss = 0
+                for Xtest, Ytest in testloader:
+                    test_loss += loss_func(quantile_net(Xtest), Ytest)
+                test_loss = test_loss/len(testloader)
+                wandb.log({'epoch': epoch, f'ymin {col_name} - {model}': test_loss})
+
+    torch.save(quantile_net.state_dict(), f'{models_dir}/ymin_{col_name}_{model}')
+
+    quantile_net = QuantileNet(n_feature=X.shape[1], n_hidden=10, n_output=1)
+    optimizer = torch.optim.SGD(quantile_net.parameters(), lr=0.001)
+    loss_func = PinballLoss(quantile=0.999, reduction='mean')
+
+    for epoch in tqdm(range(200)):
+        for X, Y in trainloader:
+            prediction = quantile_net(X)     # input x and predict based on x
+
+            loss = loss_func(prediction, Y)     # must be (1. nn output, 2. target)
+
+            optimizer.zero_grad()   # clear gradients for next train
+            loss.backward()         # backpropagation, compute gradients
+            optimizer.step()        # apply gradients
+        if (epoch+1)%10 == 0:
+            with torch.no_grad():
+                test_loss = 0
+                for Xtest, Ytest in testloader:
+                    test_loss += loss_func(quantile_net(Xtest), Ytest)
+                test_loss = test_loss/len(testloader)
+                wandb.log({'epoch': epoch, f'ymax {col_name} - {model}': test_loss})
+
+    torch.save(quantile_net.state_dict(), f'{models_dir}/ymax_{col_name}_{model}')
+
+
+def train_yminmax_deprecated(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICraw, MIMICtable, actionbloc, models_dir, nr_reps, col_name):
     icuuniqueids = MIMIC_data_combined['icustay_id'].unique()
     for model in tqdm(range(nr_reps)):
         grp = np.floor(5*np.random.rand(len(icuuniqueids))+1)
@@ -166,7 +274,50 @@ def train_yminmax(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICraw, MIMICta
         torch.save(quantile_net.state_dict(), f'{models_dir}/ymax_{model}')
 
 
-def train_yobs(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICraw, MIMICtable, actionbloc, models_dir, nr_reps, col_name):
+def train_yobs(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, actionbloc, models_dir, col_name, model):
+    MIMICraw_tr = MIMICtable_filtered_t0_tr[['icustay_id']].merge(MIMICraw, on='icustay_id')    
+    MIMICraw_test = MIMICraw[~MIMICraw['icustay_id'].isin(MIMICtable_filtered_t0_tr['icustay_id'])]
+    X = torch.FloatTensor(MIMICraw_tr.drop(columns=['icustay_id']).values)
+    Xtestmimic = torch.FloatTensor(MIMICraw_test.drop(columns=['icustay_id']).values)
+    actions_tr = MIMICraw_tr[['icustay_id']].merge(actionbloc, on='icustay_id')
+    actions_test = MIMICraw_test[['icustay_id']].merge(actionbloc, on='icustay_id')
+    A = torch.tensor(actions_tr['action_bloc'].values).to(torch.long)-1
+    Atest = torch.tensor(actions_test['action_bloc'].values).to(torch.long)-1
+    Y = torch.FloatTensor(MIMICtable_filtered_t1_tr[col_name].values).unsqueeze(dim=1)
+    Ytest = torch.FloatTensor(MIMICraw_test[['icustay_id']].merge(MIMICtable_filtered_t1, on='icustay_id')[col_name].values).unsqueeze(dim=1)
+    
+    Y = (Y - MIMICtable[col_name].mean())/MIMICtable[col_name].std()
+    Ytest = (Ytest - MIMICtable[col_name].mean())/MIMICtable[col_name].std()
+    train = data_utils.TensorDataset(torch.column_stack((X, A)), Y)
+    trainloader = torch.utils.data.DataLoader(train, batch_size=32)
+    test = data_utils.TensorDataset(torch.column_stack((Xtestmimic, Atest)), Ytest)
+    testloader = torch.utils.data.DataLoader(test, batch_size=32)
+    
+    net = Net(n_feature=X.shape[1]+1, n_hidden=10, n_output=1)
+    optimizer = torch.optim.SGD(net.parameters(), lr=0.001, weight_decay=0.1)
+    loss_func = torch.nn.MSELoss()    
+    
+    for epoch in tqdm(range(200)):
+        for X, Y in trainloader:
+            prediction = net(X)     # input x and predict based on x
+
+            loss = loss_func(prediction, Y)     # must be (1. nn output, 2. target)
+
+            optimizer.zero_grad()   # clear gradients for next train
+            loss.backward()         # backpropagation, compute gradients
+            optimizer.step()        # apply gradients
+        if (epoch+1)%10 == 0:
+            with torch.no_grad():
+                test_loss = 0
+                for Xtest, Ytest in testloader:
+                    test_loss += loss_func(net(Xtest), Ytest)
+                test_loss = test_loss/len(testloader)
+                wandb.log({'epoch': epoch, f'yobs {col_name} - {model}': test_loss})
+    
+    torch.save(net.state_dict(), f'{models_dir}/yobs_{col_name}_{model}')
+
+
+def train_yobs_deprecated(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICraw, MIMICtable, actionbloc, models_dir, nr_reps, col_name):
     icuuniqueids = MIMIC_data_combined['icustay_id'].unique()
     for model in tqdm(range(nr_reps)):
         grp = np.floor(5*np.random.rand(len(icuuniqueids))+1)
@@ -212,7 +363,41 @@ def train_yobs(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICraw, MIMICtable
         torch.save(net.state_dict(), f'{models_dir}/yobs_{model}')
 
 
-def train_policies(MIMIC_data_combined, MIMICraw, actionbloc, models_dir, nr_reps):
+def train_policies(MIMICtable_filtered_t0_tr, MIMICraw, actionbloc, models_dir, model):
+    MIMICraw_tr = MIMICtable_filtered_t0_tr[['icustay_id']].merge(MIMICraw, on='icustay_id')
+    MIMICraw_test = MIMICraw[~MIMICraw['icustay_id'].isin(MIMICtable_filtered_t0_tr['icustay_id'])]
+    X = torch.FloatTensor(MIMICraw_tr.drop(columns=['icustay_id']).values)
+    Xtestmimic = torch.FloatTensor(MIMICraw_test.drop(columns=['icustay_id']).values)
+    actions_tr = MIMICraw_tr[['icustay_id']].merge(actionbloc, on='icustay_id')
+    actions_test = MIMICraw_test[['icustay_id']].merge(actionbloc, on='icustay_id')
+    Y = torch.tensor(actions_tr['action_bloc'].values).to(torch.long)-1
+    Ytest = torch.tensor(actions_test['action_bloc'].values).to(torch.long)-1
+    train = data_utils.TensorDataset(X, Y)
+    trainloader = torch.utils.data.DataLoader(train, batch_size=32)
+    test = data_utils.TensorDataset(Xtestmimic, Ytest)
+    testloader = torch.utils.data.DataLoader(test, batch_size=32)
+
+    loss_func = torch.nn.CrossEntropyLoss()
+    policy = PolicyNetwork(input_dim=X.shape[1], output_dim=25)
+    optimizer = torch.optim.SGD(policy.parameters(), lr=0.001)        
+    for epoch in range(300):
+        for data, label in trainloader:
+            prediction = policy(data)     # input x and predict based on x
+            loss = loss_func(prediction, label)     # must be (1. nn output, 2. target)
+            optimizer.zero_grad()   # clear gradients for next train
+            loss.backward()         # backpropagation, compute gradients
+            optimizer.step()        # apply gradients
+        if (epoch + 1) % 10 == 0:
+            with torch.no_grad():
+                test_loss = 0
+                for test_data, test_label in testloader:
+                    test_loss += loss_func(policy(test_data), test_label)
+                wandb.log({'epoch': epoch, f'TL pol - mdl {model}': test_loss})
+            log_policy_accuracy(policy, Xtestmimic, Ytest, epoch, model)
+    torch.save(policy.state_dict(), f'{models_dir}/policy_{model}')
+
+
+def train_policies_deprecated(MIMIC_data_combined, MIMICraw, actionbloc, models_dir, nr_reps):
     icuuniqueids = MIMIC_data_combined['icustay_id'].unique()
     for model in tqdm(range(nr_reps)):
         grp = np.floor(5*np.random.rand(len(icuuniqueids))+1)
@@ -250,7 +435,87 @@ def train_policies(MIMIC_data_combined, MIMICraw, actionbloc, models_dir, nr_rep
                 log_policy_accuracy(policy, Xtestmimic, Ytest, epoch, model)
         torch.save(policy.state_dict(), f'{models_dir}/policy_{model}')
 
+
 def preprocess_data(args):
+    logging.info("Preprocessing data")
+    extension = 'final_.csv'
+    all_filenames = [i for i in glob.glob((args.sim_path + '/*{}').format(extension))]
+    pulse_data = pd.concat([pd.read_csv(f) for f in all_filenames ])
+    pulse_data['icustay_id'] = pulse_data['id'].astype(int)
+    pulse_data = pulse_data.reset_index()
+    pulse_rename = {}
+
+    for k, v in column_mappings.items():
+        pulse_rename.update({k: f"{v}"})
+
+    pulse_data = pulse_data.rename(columns=pulse_rename)
+
+    MIMICtable = pd.read_csv(f"{args.obs_path}/MIMIC-1hourly-length-5-train.csv")
+    MIMICtable['icustay_id'] = MIMICtable['icustay_id'].astype(int)
+    
+    MIMICtable_filtered_t0 = MIMICtable[MIMICtable['bloc']==1].reset_index()
+    MIMICtable_filtered_t1 = MIMICtable[MIMICtable['bloc']==2][[
+        'icustay_id', 'RR', 'HR', 'SysBP', 'MeanBP', 'DiaBP',
+        'SpO2', 'Temp_C', 'FiO2_1', 'Potassium', 'Sodium', 'Chloride',
+        'Glucose', 'BUN', 'Creatinine', 'Magnesium', 'Calcium', 'Ionised_Ca',
+        'CO2_mEqL', 'SGOT', 'SGPT', 'Total_bili', 'Albumin', 'Hb', 'WBC_count',
+        'Platelets_count', 'PTT', 'PT', 'INR', 'Arterial_pH', 'paO2', 'paCO2',
+        'Arterial_BE', 'HCO3', 'Arterial_lactate']].reset_index()
+
+    x_columns = ['gender', 'age', 'Weight_kg'] + cols
+    MIMICtable_filtered_t1 = MIMICtable_filtered_t1[MIMICtable_filtered_t1[cols].min(axis=1)>0].reset_index()
+    MIMICtable_filtered_t0 = MIMICtable_filtered_t0[MIMICtable_filtered_t0['icustay_id'].isin(MIMICtable_filtered_t1['icustay_id'])].reset_index()
+
+    pulse_data_t0 = pulse_data[pulse_data['index']==1].reset_index(drop=True)
+    pulse_data_t1 = pulse_data[pulse_data['index']==2].reset_index(drop=True)
+    pulse_data_t0 = MIMICtable_filtered_t0[['gender', 'age', 'Weight_kg', 'icustay_id']].merge(pulse_data_t0, on=['icustay_id'])
+    pulse_data_t1 = MIMICtable_filtered_t0[['gender', 'age', 'Weight_kg', 'icustay_id']].merge(pulse_data_t1, on=['icustay_id'])
+
+    logging.info('Processing raw data')
+    # all 47 columns of interest
+    colbin = ['gender']
+    colnorm=['age','Weight_kg','GCS','HR','SysBP','MeanBP','DiaBP','RR','Temp_C','FiO2_1',\
+        'Potassium','Sodium','Chloride','Glucose','Magnesium','Calcium',\
+        'Hb','WBC_count','Platelets_count','PTT','PT','Arterial_pH','paO2','paCO2',\
+        'Arterial_BE','HCO3','Arterial_lactate','SOFA','SIRS','Shock_Index','PaO2_FiO2','cumulated_balance']
+    collog=['SpO2','BUN','Creatinine','SGOT','SGPT','Total_bili','INR','output_total','output_1hourly']
+
+
+    MIMICraw = MIMICtable_filtered_t0[['icustay_id'] + x_columns].copy()
+
+    for col in MIMICraw:
+        if col in colbin:
+            MIMICraw[col] = MIMICraw[col] - 0.5
+        elif col in colnorm:
+            cmu = MIMICtable_filtered_t0[col].mean()
+            csigma = MIMICtable_filtered_t0[col].std()
+            MIMICraw[col] = (MIMICraw[col] - cmu)/csigma
+        elif col in collog:
+            log_values = np.log(0.1 + MIMICtable_filtered_t0[col])
+            dmu = log_values.mean()
+            dsigma = log_values.std()
+            MIMICraw[col] = (log_values - dmu)/dsigma    
+
+    pulseraw = pulse_data_t0[['icustay_id'] + x_columns].copy()
+
+    for col in pulseraw:
+        if col in colbin:
+            pulseraw[col] = pulseraw[col] - 0.5
+        elif col in colnorm:
+            cmu = pulseraw[col].mean()
+            csigma = pulseraw[col].std()
+            pulseraw[col] = (pulseraw[col] - cmu)/csigma
+        elif col in collog:
+            log_values = np.log(0.1 + MIMICraw[col])
+            dmu = log_values.mean()
+            dsigma = log_values.std()
+            MIMICraw[col] = (log_values - dmu)/dsigma    
+    logging.info('Raw data processed')
+    logging.info("Preprocessing done")
+    return MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable, MIMICraw, pulseraw, pulse_data_t0, pulse_data_t1
+
+
+def preprocess_data_deprecated(args):
     logging.info("Preprocessing data")
     extension = 'final_.csv'
     col_name = args.col_name
@@ -320,6 +585,7 @@ def preprocess_data(args):
     logging.info("Preprocessing done")
     return MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMIC_data_combined, MIMICtable, pulse_data_combined, MIMICraw, pulseraw
 
+
 def create_action_bins(MIMICtable_filtered_t0, nra):
     logging.info('Creating action bins')
     nact = nra**2
@@ -348,6 +614,7 @@ def create_action_bins(MIMICtable_filtered_t0, nra):
     actionbloc = pd.DataFrame()
     for index, row in med.iterrows():
         actionbloc.at[index, 'action_bloc'] = uniqueValues.loc[(uniqueValues['IV'] == row['IV']) & (uniqueValues['VC'] == row['VC'])].index.values[0]+1
+    actionbloc['icustay_id'] = MIMICtable_filtered_t0['icustay_id']
     actionbloc = actionbloc.astype({'action_bloc':'int32'})
     logging.info('Action bins created')
     return actionbloc
