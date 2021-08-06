@@ -506,10 +506,10 @@ def preprocess_data(args):
             csigma = pulseraw[col].std()
             pulseraw[col] = (pulseraw[col] - cmu)/csigma
         elif col in collog:
-            log_values = np.log(0.1 + MIMICraw[col])
+            log_values = np.log(0.1 + pulseraw[col])
             dmu = log_values.mean()
             dsigma = log_values.std()
-            MIMICraw[col] = (log_values - dmu)/dsigma    
+            pulseraw[col] = (log_values - dmu)/dsigma
     logging.info('Raw data processed')
     logging.info("Preprocessing done")
     return MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable, MIMICraw, pulseraw, pulse_data_t0, pulse_data_t1
