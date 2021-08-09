@@ -102,15 +102,14 @@ def train_ysim_deprecated(MIMIC_data_combined, MIMICtable, pulse_data_combined, 
         torch.save(net.state_dict(), f'{models_dir}/ysim_{model}')
 
 
-def train_ysim(MIMICtable, pulse_data_t0_tr, pulse_data_t1_tr, pulse_data_t1, pulseraw, actionbloc, models_dir, col_name, model):
+def train_ysim(MIMICtable, pulse_data_t0_tr, pulse_data_t1_tr, pulse_data_t0, pulse_data_t1, pulseraw, models_dir, col_name, model):
     pulseraw_tr = pulse_data_t0_tr[['icustay_id']].merge(pulseraw, on='icustay_id')
     pulseraw_test = pulseraw[~pulseraw['icustay_id'].isin(pulse_data_t0_tr['icustay_id'])]
     X = torch.FloatTensor(pulseraw_tr.drop(columns=['icustay_id']).values)
     Xtestmimic = torch.FloatTensor(pulseraw_test.drop(columns=['icustay_id']).values)
-    actions_tr = pulseraw_tr[['icustay_id']].merge(actionbloc, on='icustay_id')
-    actions_test = pulseraw_test[['icustay_id']].merge(actionbloc, on='icustay_id')
-    A = torch.tensor(actions_tr['action_bloc'].values).to(torch.long)-1
-    Atest = torch.tensor(actions_test['action_bloc'].values).to(torch.long)-1
+    A = torch.tensor(pulse_data_t0_tr['A'].values).to(torch.long)-1
+    Atest = torch.tensor(pulseraw_test[['icustay_id']].merge(pulse_data_t0, on=['icustay_id'])['A'].values).to(torch.long)-1
+
     Y = torch.FloatTensor(pulse_data_t1_tr[col_name].values).unsqueeze(dim=1)
     Ytest = torch.FloatTensor(pulseraw_test[['icustay_id']].merge(pulse_data_t1, on='icustay_id')[col_name].values).unsqueeze(dim=1)
     Y = (Y - MIMICtable[col_name].mean())/MIMICtable[col_name].std()
@@ -274,15 +273,13 @@ def train_yminmax_deprecated(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICr
         torch.save(quantile_net.state_dict(), f'{models_dir}/ymax_{model}')
 
 
-def train_yobs(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, actionbloc, models_dir, col_name, model):
+def train_yobs(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, models_dir, col_name, model):
     MIMICraw_tr = MIMICtable_filtered_t0_tr[['icustay_id']].merge(MIMICraw, on='icustay_id')    
     MIMICraw_test = MIMICraw[~MIMICraw['icustay_id'].isin(MIMICtable_filtered_t0_tr['icustay_id'])]
     X = torch.FloatTensor(MIMICraw_tr.drop(columns=['icustay_id']).values)
     Xtestmimic = torch.FloatTensor(MIMICraw_test.drop(columns=['icustay_id']).values)
-    actions_tr = MIMICraw_tr[['icustay_id']].merge(actionbloc, on='icustay_id')
-    actions_test = MIMICraw_test[['icustay_id']].merge(actionbloc, on='icustay_id')
-    A = torch.tensor(actions_tr['action_bloc'].values).to(torch.long)-1
-    Atest = torch.tensor(actions_test['action_bloc'].values).to(torch.long)-1
+    A = torch.tensor(MIMICtable_filtered_t0_tr['A'].values).to(torch.long)-1
+    Atest = torch.tensor(MIMICraw_test[['icustay_id']].merge(MIMICtable_filtered_t0, on=['icustay_id'])['A'].values).to(torch.long)-1
     Y = torch.FloatTensor(MIMICtable_filtered_t1_tr[col_name].values).unsqueeze(dim=1)
     Ytest = torch.FloatTensor(MIMICraw_test[['icustay_id']].merge(MIMICtable_filtered_t1, on='icustay_id')[col_name].values).unsqueeze(dim=1)
     
@@ -363,15 +360,14 @@ def train_yobs_deprecated(MIMIC_data_combined, MIMICtable_filtered_t0, MIMICraw,
         torch.save(net.state_dict(), f'{models_dir}/yobs_{model}')
 
 
-def train_policies(MIMICtable_filtered_t0_tr, MIMICraw, actionbloc, models_dir, model):
+def train_policies(MIMICtable_filtered_t0_tr, MIMICtable_filtered_t0, MIMICraw, models_dir, model):
     MIMICraw_tr = MIMICtable_filtered_t0_tr[['icustay_id']].merge(MIMICraw, on='icustay_id')
     MIMICraw_test = MIMICraw[~MIMICraw['icustay_id'].isin(MIMICtable_filtered_t0_tr['icustay_id'])]
     X = torch.FloatTensor(MIMICraw_tr.drop(columns=['icustay_id']).values)
     Xtestmimic = torch.FloatTensor(MIMICraw_test.drop(columns=['icustay_id']).values)
-    actions_tr = MIMICraw_tr[['icustay_id']].merge(actionbloc, on='icustay_id')
-    actions_test = MIMICraw_test[['icustay_id']].merge(actionbloc, on='icustay_id')
-    Y = torch.tensor(actions_tr['action_bloc'].values).to(torch.long)-1
-    Ytest = torch.tensor(actions_test['action_bloc'].values).to(torch.long)-1
+    Y = torch.tensor(MIMICtable_filtered_t0_tr['A'].values).to(torch.long)-1
+    Ytest = torch.tensor(MIMICraw_test[['icustay_id']].merge(MIMICtable_filtered_t0, on=['icustay_id'])['A'].values).to(torch.long)-1
+    # Ytest = torch.tensor(MIMICtable_filtered_t0.loc[~MIMICtable_filtered_t0['icustay_id'].isin(MIMICtable_filtered_t0_tr['icustay_id']), 'A'].values).to(torch.long)-1
     train = data_utils.TensorDataset(X, Y)
     trainloader = torch.utils.data.DataLoader(train, batch_size=32)
     test = data_utils.TensorDataset(Xtestmimic, Ytest)
@@ -452,15 +448,17 @@ def preprocess_data(args):
 
     MIMICtable = pd.read_csv(f"{args.obs_path}/MIMIC-1hourly-length-5-train.csv")
     MIMICtable['icustay_id'] = MIMICtable['icustay_id'].astype(int)
+    MIMICtable = create_action_bins(MIMICtable, args.nra)
     
     MIMICtable_filtered_t0 = MIMICtable[MIMICtable['bloc']==1].reset_index()
     MIMICtable_filtered_t1 = MIMICtable[MIMICtable['bloc']==2][[
+        'gender', 'age', 'Weight_kg',
         'icustay_id', 'RR', 'HR', 'SysBP', 'MeanBP', 'DiaBP',
         'SpO2', 'Temp_C', 'FiO2_1', 'Potassium', 'Sodium', 'Chloride',
         'Glucose', 'BUN', 'Creatinine', 'Magnesium', 'Calcium', 'Ionised_Ca',
         'CO2_mEqL', 'SGOT', 'SGPT', 'Total_bili', 'Albumin', 'Hb', 'WBC_count',
         'Platelets_count', 'PTT', 'PT', 'INR', 'Arterial_pH', 'paO2', 'paCO2',
-        'Arterial_BE', 'HCO3', 'Arterial_lactate']].reset_index()
+        'Arterial_BE', 'HCO3', 'Arterial_lactate', 'A']].reset_index()
 
     x_columns = ['gender', 'age', 'Weight_kg'] + cols
     MIMICtable_filtered_t1 = MIMICtable_filtered_t1[MIMICtable_filtered_t1[cols].min(axis=1)>0].reset_index()
@@ -468,8 +466,8 @@ def preprocess_data(args):
 
     pulse_data_t0 = pulse_data[pulse_data['index']==1].reset_index(drop=True)
     pulse_data_t1 = pulse_data[pulse_data['index']==2].reset_index(drop=True)
-    pulse_data_t0 = MIMICtable_filtered_t0[['gender', 'age', 'Weight_kg', 'icustay_id']].merge(pulse_data_t0, on=['icustay_id'])
-    pulse_data_t1 = MIMICtable_filtered_t0[['gender', 'age', 'Weight_kg', 'icustay_id']].merge(pulse_data_t1, on=['icustay_id'])
+    pulse_data_t0 = MIMICtable[MIMICtable['bloc']==2][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t0, on=['icustay_id'])
+    pulse_data_t1 = MIMICtable[MIMICtable['bloc']==3][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t1, on=['icustay_id'])
 
     logging.info('Processing raw data')
     # all 47 columns of interest
@@ -586,7 +584,7 @@ def preprocess_data_deprecated(args):
     return MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMIC_data_combined, MIMICtable, pulse_data_combined, MIMICraw, pulseraw
 
 
-def create_action_bins(MIMICtable_filtered_t0, nra):
+def create_action_bins_deprecated(MIMICtable_filtered_t0, nra):
     logging.info('Creating action bins')
     nact = nra**2
     input_1hourly_nonzero = MIMICtable_filtered_t0.loc[MIMICtable_filtered_t0['input_1hourly']>0, 'input_1hourly']
@@ -618,3 +616,38 @@ def create_action_bins(MIMICtable_filtered_t0, nra):
     actionbloc = actionbloc.astype({'action_bloc':'int32'})
     logging.info('Action bins created')
     return actionbloc
+
+
+def create_action_bins(MIMICtable, nra):
+    logging.info('Creating action bins')
+    nact = nra**2
+    input_1hourly_nonzero = MIMICtable.loc[MIMICtable['input_1hourly']>0, 'input_1hourly']
+    iol_ranked = rankdata(input_1hourly_nonzero)/len(input_1hourly_nonzero) # excludes zero fluid (will be action 1)
+    iof = np.floor((iol_ranked + 0.2499999999)*4) # converts iv volume in 4 actions
+    io = np.ones(len(MIMICtable)) # array of ones, by default
+    io[MIMICtable['input_1hourly']>0] = iof + 1 # where more than zero fluid given: save actual action
+    vc = MIMICtable['max_dose_vaso'].copy()
+    vc_nonzero = MIMICtable.loc[MIMICtable['max_dose_vaso']!=0, 'max_dose_vaso']
+    vc_ranked = rankdata(vc_nonzero)/len(vc_nonzero)
+    vcf = np.floor((vc_ranked + 0.2499999999)*4) # converts to 4 bins
+    vcf[vcf==0] = 1
+    vc[vc!=0] = vcf + 1
+    vc[vc==0] = 1
+    # median dose of drug in all bins
+    ma1 = [MIMICtable.loc[io==1, 'input_1hourly'].median(), MIMICtable.loc[io==2, 'input_1hourly'].median(), MIMICtable.loc[io==3, 'input_1hourly'].median(), MIMICtable.loc[io==4, 'input_1hourly'].median(), MIMICtable.loc[io==5, 'input_1hourly'].median()]
+    ma2 = [MIMICtable.loc[vc==1, 'max_dose_vaso'].median(), MIMICtable.loc[vc==2, 'max_dose_vaso'].median(), MIMICtable.loc[vc==3, 'max_dose_vaso'].median(), MIMICtable.loc[vc==4, 'max_dose_vaso'].median(), MIMICtable.loc[vc==5, 'max_dose_vaso'].median()]
+    med = pd.DataFrame(data={'IV':io, 'VC': vc})
+    med = med.astype({'IV': 'int32', 'VC': 'int32'})
+    uniqueValues = med.drop_duplicates().reset_index(drop=True)
+    uniqueValueDoses = pd.DataFrame()
+    for index, row in uniqueValues.iterrows():
+        uniqueValueDoses.at[index, 'IV'], uniqueValueDoses.at[index, 'VC'] = ma1[row['IV']-1], ma2[row['VC']-1]
+
+    actionbloc = pd.DataFrame()
+    for index, row in med.iterrows():
+        actionbloc.at[index, 'action_bloc'] = uniqueValues.loc[(uniqueValues['IV'] == row['IV']) & (uniqueValues['VC'] == row['VC'])].index.values[0]+1
+    actionbloc = actionbloc.astype({'action_bloc':'int32'})
+
+    logging.info('Action bins created')
+    MIMICtable['A'] = actionbloc['action_bloc']
+    return MIMICtable

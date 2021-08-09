@@ -42,13 +42,12 @@ def main(args):
     pulse_data_t0_tr = resample(pulse_data_t0, n_samples=sim_train_size)
     pulse_data_t1_tr = pulse_data_t0_tr[['icustay_id']].merge(pulse_data_t1, on='icustay_id')
 
-    actionbloc = create_action_bins(MIMICtable_filtered_t0, args.nra)
-    train_policies(MIMICtable_filtered_t0_tr, MIMICraw, actionbloc, args.models_dir, args.model)
+    train_policies(MIMICtable_filtered_t0_tr, MIMICtable_filtered_t0, MIMICraw, args.models_dir, args.model)
     if not args.train_policy_only:
         for col_name in cols:
-            train_yobs(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, actionbloc, args.models_dir, col_name, args.model)
+            train_yobs(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, args.models_dir, col_name, args.model)
             train_yminmax(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, args.models_dir, col_name, args.model)
-            train_ysim(MIMICtable, pulse_data_t0_tr, pulse_data_t1_tr, pulse_data_t1, pulseraw, actionbloc, args.models_dir, col_name, args.model)
+            train_ysim(MIMICtable, pulse_data_t0_tr, pulse_data_t1_tr, pulse_data_t0, pulse_data_t1, pulseraw, args.models_dir, col_name, args.model)
 
 
 if __name__=="__main__":
@@ -63,7 +62,7 @@ if __name__=="__main__":
     parser.add_argument("--train_policy_only", help="If true, does not train y models", type=bool, default=False)
     args = parser.parse_args()
 
-    wandb.init(project="Manski-Regression", name=f"{args.sim_name}-{args.model}-dryrun")
+    wandb.init(project="Manski-Regression", name=f"{args.sim_name}-{args.model}")
 
     main(args)
 
