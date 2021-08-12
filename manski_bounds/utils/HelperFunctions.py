@@ -466,8 +466,22 @@ def preprocess_data(args):
 
     pulse_data_t0 = pulse_data[pulse_data['index']==1].reset_index(drop=True)
     pulse_data_t1 = pulse_data[pulse_data['index']==2].reset_index(drop=True)
+    pulse_data_t2 = pulse_data[pulse_data['index']==3].reset_index(drop=True)
+    pulse_data_t3 = pulse_data[pulse_data['index']==4].reset_index(drop=True)
+
     pulse_data_t0 = MIMICtable[MIMICtable['bloc']==2][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t0, on=['icustay_id'])
     pulse_data_t1 = MIMICtable[MIMICtable['bloc']==3][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t1, on=['icustay_id'])
+    pulse_data_t2 = MIMICtable[MIMICtable['bloc']==4][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t2, on=['icustay_id'])
+    pulse_data_t3 = MIMICtable[MIMICtable['bloc']==5][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t3, on=['icustay_id'])
+
+    pulse_data_t0 = pd.concat([pulse_data_t0, pulse_data_t1, pulse_data_t2])
+    pulse_data_t1 = pd.concat([pulse_data_t1, pulse_data_t2, pulse_data_t3])
+
+    if not pulse_data_t0['icustay_id'].equals(pulse_data_t1['icustay_id']):
+        raise RuntimeError("Pulse data not contain same icustay_id's at t0 and t1")
+
+    pulse_data_t0['icustay_id'] = np.arange(len(pulse_data_t0))
+    pulse_data_t1['icustay_id'] = np.arange(len(pulse_data_t1))
 
     logging.info('Processing raw data')
     # all 47 columns of interest
