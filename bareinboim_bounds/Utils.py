@@ -167,8 +167,10 @@ def bootstrap_distribution_(col, gender, age, action, column_v, trajec_actions, 
     obs_data.loc[:,f'{col}_tuple'] = obs_data[col].apply(tuple)
     obs_data.loc[:,f'actions_tuple'] = obs_data['actions'].apply(tuple)
     df = pd.DataFrame()
-    max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & find_elements_containing(obs_data[col], max(column_v)), f'{col}_raw'].max()
-    min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & find_elements_containing(obs_data[col], min(column_v)), f'{col}_raw'].min()
+    # max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & find_elements_containing(obs_data[col], max(column_v)), f'{col}_raw'].max()
+    # min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & find_elements_containing(obs_data[col], min(column_v)), f'{col}_raw'].min()
+    max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data[col].apply(lambda x: x[-1]) == column_v[-1]), f'{col}_raw'].max()
+    min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data[col].apply(lambda x: x[-1]) == column_v[-1]), f'{col}_raw'].min()
     sim_filtered = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'{col}_tuple']==tuple(column_v)) & (sim['actions_tuple'] == tuple(action))].copy()
     real_filtered = obs_data[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data[f'{col}_tuple']==tuple(column_v)) & (obs_data['actions_tuple'] == tuple(action))].copy()
     if len(real_filtered) > 1 and len(sim_filtered) > 1:

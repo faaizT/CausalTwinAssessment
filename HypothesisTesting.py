@@ -196,10 +196,12 @@ def main(args):
         # trajec_actions.to_csv(f'{args.hyp_test_dir}/trajec_actions_{args.col_name}.csv')
         # sim_trajec_actions.to_csv(f'{args.hyp_test_dir}/sim_trajec_actions_{args.col_name}.csv')
         rej_hyps.to_csv(f'{args.hyp_test_dir}/rej_hyps_{args.col_name}.csv')
+        p_values.to_csv(f'{args.hyp_test_dir}/p_values_{args.col_name}.csv')
     else:
         # trajec_actions.to_csv(f'{args.hyp_test_dir}/trajec_actions_sofabin_{args.sofa_bin}_{args.col_name}.csv')
         # sim_trajec_actions.to_csv(f'{args.hyp_test_dir}/sim_trajec_actions_sofabin_{args.sofa_bin}_{args.col_name}.csv')
         rej_hyps.to_csv(f'{args.hyp_test_dir}/rej_hyps_sofabin_{args.sofa_bin}_{args.col_name}.csv')
+        p_values.to_csv(f'{args.hyp_test_dir}/p_values_sofabin_{args.sofa_bin}_{args.col_name}.csv')
 
 
 if __name__=="__main__":
