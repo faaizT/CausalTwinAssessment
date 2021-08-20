@@ -251,38 +251,45 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
     return len(rej_hyps), p_values, rej_hyps, total_hypotheses
 
 
+def get_col_bin(col_v, col_name, col_bins_num, MIMICtable, col_bins_obs):
+    for col_bin in range(1, col_bins_num+1):
+        if (col_v <= MIMICtable.loc[col_bins_obs==col_bin, f'{col_name}'].min()):
+            return col_bin
+        if (col_v <= MIMICtable.loc[col_bins_obs==col_bin, f'{col_name}'].max()) and (col_v >= MIMICtable.loc[col_bins_obs==col_bin, f'{col_name}'].min()):
+            return col_bin
+    return col_bin
+
+
 def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc, hyp_test_dir):
     logging.info("doing hypothesis testing")
-    sim_data = sim_data.rename(columns={column: f'{column}_raw'})
     
     col_ranked = rankdata(MIMICtable[column])/len(MIMICtable)
-    col_bins = np.floor((col_ranked + 1/(col_bins_num + 0.0000001))*col_bins_num)
-    # median_col = [MIMICtable.loc[col_bins==1, column].median(), MIMICtable.loc[col_bins==2, column].median(), MIMICtable.loc[col_bins==3, column].median(), MIMICtable.loc[col_bins==4, column].median()]
-    
-    MIMICtable = MIMICtable.rename(columns={column: f'{column}_raw'})
-    MIMICtable[column] = col_bins
-    sim_data = sim_data.merge(MIMICtable[['age', 'icustay_id', 'bloc', column]], left_on=['icustay_id', 'bloc', 'age'], right_on=['icustay_id', 'bloc', 'age'])
-    
+    col_bins_obs = np.floor((col_ranked + 1/(col_bins_num + 0.0000001))*col_bins_num)
+    col_bins_sim = sim_data[column].copy().apply(lambda x: get_col_bin(x, column, col_bins_num, MIMICtable, col_bins_obs))
+    sim_data = sim_data.merge(MIMICtable[['age', 'icustay_id', 'bloc']], left_on=['icustay_id', 'bloc', 'age'], right_on=['icustay_id', 'bloc', 'age'])
+    logging.info("Extracted column bins for simulator data")
+
     trajectories = pd.DataFrame()
     trajectories['t'] = np.arange(len(MIMICtable))%5
     trajectories['icustay_id'] = MIMICtable['icustay_id']
     trajectories['gender'] = MIMICtable['gender']
     trajectories['age'] = MIMICtable['age']
-    trajectories[column] = MIMICtable[column]
+    trajectories[column] = col_bins_obs
     trajectories['A_t'] = actionbloc['action_bloc']
     trajectories = trajectories[trajectories['t']!=4]
     
     sim_trajecs = pd.DataFrame()
     sim_trajecs['t'] = np.arange(len(sim_data))%5
     sim_trajecs['icustay_id'] = sim_data['icustay_id']
+    sim_trajecs[column] = col_bins_sim
     sim_trajecs = sim_trajecs[sim_trajecs['t']!=4]
-    sim_trajecs = sim_trajecs.merge(trajectories[['t','icustay_id', 'A_t', 'gender', 'age', column]], left_on=['icustay_id', 't'], right_on=['icustay_id', 't'])
+    sim_trajecs = sim_trajecs.merge(trajectories[['t','icustay_id', 'A_t', 'gender', 'age']], left_on=['icustay_id', 't'], right_on=['icustay_id', 't'])
     
     trajec_actions = get_trajec_actions(trajectories, column)
     sim_trajec_actions = get_sim_trajec_actions(sim_trajecs, column)
-    
     icustayids = MIMICtable['icustay_id'].unique()
     trajec_actions['icustay_id'] = icustayids
+    logging.info("Simulator and Observational data ready")
     
     mimic_data_last_time = MIMICtable[MIMICtable['bloc'] == 5].drop(columns=column)
     trajec_actions = trajec_actions.merge(mimic_data_last_time, left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
@@ -290,8 +297,9 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc
     sim_data_last_time = sim_data[sim_data['bloc'] == 5].drop(columns=column)
     sim_trajec_actions = sim_trajec_actions.merge(sim_data_last_time, left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     
-    trajec_actions.to_csv(f'{hyp_test_dir}/trajec_actions_{column}.csv')
-    sim_trajec_actions.to_csv(f'{hyp_test_dir}/sim_trajec_actions_{column}.csv')
+    trajec_actions.to_csv(f'{hyp_test_dir}/trajec_actions_{column}.csv', index=False)
+    sim_trajec_actions.to_csv(f'{hyp_test_dir}/sim_trajec_actions_{column}.csv', index=False)
+
     num_rej_hyps, p_values, rej_hyps, total_hypotheses = rejected_hypotheses_bootstrap_trajectories(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
     return num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions
 
