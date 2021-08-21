@@ -138,24 +138,7 @@ def load_biogears_data(sim_path, MIMICtable):
     biogears_data = biogears_data.merge(MIMICtable[['gender', 'age', 'Weight_kg', 'icustay_id', 'bloc']], left_on=['icustay_id', 'bloc'], right_on=['icustay_id', 'bloc'])
     return biogears_data
 
-
-def main(args):
-    if args.saved_dir is not None:
-        logging.info(f"Using saved processed data from dir {args.saved_dir}")
-    else:
-        logging.info("Not using saved data")
-    MIMICtable = pd.read_csv(args.obs_path + '/MIMIC-1hourly-length-5.csv')
-    MIMICtable = MIMICtable.sort_values(by=['icustay_id', 'bloc'], ignore_index=True)
-    age_ranked = rankdata(MIMICtable['age'])/len(MIMICtable)
-    age_bins = np.floor((age_ranked + 0.2499999999)*4)
-    median_ages = [MIMICtable.loc[age_bins==1, 'age'].median(), MIMICtable.loc[age_bins==2, 'age'].median(), MIMICtable.loc[age_bins==3, 'age'].median(), MIMICtable.loc[age_bins==4, 'age'].median()]
-    MIMICtable = MIMICtable.rename(columns={"age": "age_raw"})
-    MIMICtable['age'] = age_bins
-
-    if args.sim_name == "pulse":
-        sim_data = load_pulse_data(args.sim_path, MIMICtable)
-    else:
-        sim_data = load_biogears_data(args.sim_path, MIMICtable)
+def create_action_bins(MIMICtable):
     logging.info('Creating action bins')
     nact = nra**2
     input_1hourly_nonzero = MIMICtable.loc[MIMICtable['input_1hourly']>0, 'input_1hourly']
@@ -185,21 +168,43 @@ def main(args):
         actionbloc.at[index, 'action_bloc'] = uniqueValues.loc[(uniqueValues['IV'] == row['IV']) & (uniqueValues['VC'] == row['VC'])].index.values[0]+1
     actionbloc = actionbloc.astype({'action_bloc':'int32'})
     logging.info('Action bins created')
+    MIMICtable['A_t'] = actionbloc
+    return MIMICtable
+
+def load_mimic_data(obs_path):
+    MIMICtable = pd.read_csv(args.obs_path + '/MIMIC-1hourly-length-5.csv')
+    MIMICtable = MIMICtable.sort_values(by=['icustay_id', 'bloc'], ignore_index=True)
+    age_ranked = rankdata(MIMICtable['age'])/len(MIMICtable)
+    age_bins = np.floor((age_ranked + 0.2499999999)*4)
+    median_ages = [MIMICtable.loc[age_bins==1, 'age'].median(), MIMICtable.loc[age_bins==2, 'age'].median(), MIMICtable.loc[age_bins==3, 'age'].median(), MIMICtable.loc[age_bins==4, 'age'].median()]
+    MIMICtable = MIMICtable.rename(columns={"age": "age_raw"})
+    MIMICtable['age'] = age_bins
+    MIMICtable = create_action_bins(MIMICtable)
+    return MIMICtable
+
+def main(args):
+    if args.saved_dir is not None:
+        logging.info(f"Using saved processed data from dir {args.saved_dir}")
+    else:
+        logging.info("Not using saved data")
+
+    MIMICtable = load_mimic_data(args.obs_path)
+    if args.sim_name == "pulse":
+        sim_data = load_pulse_data(args.sim_path, MIMICtable)
+    else:
+        sim_data = load_biogears_data(args.sim_path, MIMICtable)
+
     logging.info(f'Outcome: {args.col_name}')
     if args.saved_dir is not None:
         num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing_saved(args.col_name, args.saved_dir, sim_data, MIMICtable, args.sofa_bin)
     else:
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, actionbloc, args.hyp_test_dir)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, args.hyp_test_dir)
     
     write_to_file(f'{args.hyp_test_dir}/rej_hyp_nums.csv', args.col_name, num_rej_hyps, total_hypotheses, args.sofa_bin)
     if args.sofa_bin is None:
-        # trajec_actions.to_csv(f'{args.hyp_test_dir}/trajec_actions_{args.col_name}.csv')
-        # sim_trajec_actions.to_csv(f'{args.hyp_test_dir}/sim_trajec_actions_{args.col_name}.csv')
         rej_hyps.to_csv(f'{args.hyp_test_dir}/rej_hyps_{args.col_name}.csv')
         p_values.to_csv(f'{args.hyp_test_dir}/p_values_{args.col_name}.csv')
     else:
-        # trajec_actions.to_csv(f'{args.hyp_test_dir}/trajec_actions_sofabin_{args.sofa_bin}_{args.col_name}.csv')
-        # sim_trajec_actions.to_csv(f'{args.hyp_test_dir}/sim_trajec_actions_sofabin_{args.sofa_bin}_{args.col_name}.csv')
         rej_hyps.to_csv(f'{args.hyp_test_dir}/rej_hyps_sofabin_{args.sofa_bin}_{args.col_name}.csv')
         p_values.to_csv(f'{args.hyp_test_dir}/p_values_sofabin_{args.sofa_bin}_{args.col_name}.csv')
 

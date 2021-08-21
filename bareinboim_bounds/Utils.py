@@ -233,13 +233,6 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
         for t in range(T):
             df = bootstrap_distribution_(col, row['gender'], row['age'], row['actions'], row[col], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=t)
             if df is not None:
-                # sigma_ub = (df['UB']-df['Sim_exp_y']).var()
-                # exp_ub = (df['UB']-df['Sim_exp_y']).mean()
-                # p_ub.append(st.norm.cdf(exp_ub/np.sqrt(sigma_ub)))
-                # sigma_lb = (df['Sim_exp_y']-df['LB']).var()
-                # exp_lb = (df['Sim_exp_y']-df['LB']).mean()
-                # p_lb.append(st.norm.cdf(exp_lb/np.sqrt(sigma_lb)))
-                # p = min(p, p_ub[-1] + p_lb[-1] - 1)
                 p = min(p, ((df['LB'] <= df['Sim_exp_y']) & (df['UB'] >= df['Sim_exp_y'])).sum()/len(df))
         if df is not None:
             p_values = p_values.append({'gender': row['gender'], 'age': row['age'], 'actions': row['actions'], col: row[col], 'p': p}, ignore_index=True)
@@ -262,7 +255,7 @@ def get_col_bin(col_v, col_name, col_bins_num, MIMICtable, col_bins_obs):
     return col_bin
 
 
-def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc, hyp_test_dir):
+def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_dir):
     logging.info("doing hypothesis testing")
     
     col_ranked = rankdata(MIMICtable[column])/len(MIMICtable)
@@ -277,7 +270,7 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, actionbloc
     trajectories['gender'] = MIMICtable['gender']
     trajectories['age'] = MIMICtable['age']
     trajectories[column] = col_bins_obs
-    trajectories['A_t'] = actionbloc['action_bloc']
+    trajectories['A_t'] = MIMICtable['A_t']
     trajectories = trajectories[trajectories['t']!=4]
     
     sim_trajecs = pd.DataFrame()
