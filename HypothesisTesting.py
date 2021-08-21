@@ -168,18 +168,22 @@ def create_action_bins(MIMICtable):
         actionbloc.at[index, 'action_bloc'] = uniqueValues.loc[(uniqueValues['IV'] == row['IV']) & (uniqueValues['VC'] == row['VC'])].index.values[0]+1
     actionbloc = actionbloc.astype({'action_bloc':'int32'})
     logging.info('Action bins created')
-    MIMICtable['A_t'] = actionbloc
+    MIMICtable['A'] = actionbloc
     return MIMICtable
 
-def load_mimic_data(obs_path):
-    MIMICtable = pd.read_csv(args.obs_path + '/MIMIC-1hourly-length-5.csv')
+def load_mimic_data(obs_path, load_generated):
+    MIMICtable = pd.read_csv(args.obs_path + '/MIMIC-1hourly-length-5-filtered.csv')
+    if load_generated:
+        logging.info("Using VAE generated observational data for hypothesis testing")
+        MIMIC_generated_males = pd.read_csv(args.obs_path + '/MIMIC-generated-length-5-gender-0.0.csv')
+        MIMIC_generated_females = pd.read_csv(args.obs_path + '/MIMIC-generated-length-5-gender-1.0.csv')
+        MIMICtable = pd.concat([MIMICtable, MIMIC_generated_males, MIMIC_generated_females], ignore_index=True)
     MIMICtable = MIMICtable.sort_values(by=['icustay_id', 'bloc'], ignore_index=True)
     age_ranked = rankdata(MIMICtable['age'])/len(MIMICtable)
     age_bins = np.floor((age_ranked + 0.2499999999)*4)
     median_ages = [MIMICtable.loc[age_bins==1, 'age'].median(), MIMICtable.loc[age_bins==2, 'age'].median(), MIMICtable.loc[age_bins==3, 'age'].median(), MIMICtable.loc[age_bins==4, 'age'].median()]
     MIMICtable = MIMICtable.rename(columns={"age": "age_raw"})
     MIMICtable['age'] = age_bins
-    MIMICtable = create_action_bins(MIMICtable)
     return MIMICtable
 
 def main(args):
@@ -188,7 +192,7 @@ def main(args):
     else:
         logging.info("Not using saved data")
 
-    MIMICtable = load_mimic_data(args.obs_path)
+    MIMICtable = load_mimic_data(args.obs_path, args.load_generated)
     if args.sim_name == "pulse":
         sim_data = load_pulse_data(args.sim_path, MIMICtable)
     else:
@@ -219,6 +223,7 @@ if __name__=="__main__":
     parser.add_argument("--hyp_test_dir", help="Directory to save hypothesis test info", default="/data/ziz/taufiq/hyp-test-dir-pulse-trajecs-sofa")
     parser.add_argument("--saved_dir", help="Location of saved processed data", default=None)
     parser.add_argument("--sofa_bin", help="Splits data into SOFA bins before running hypothesis tests", default=None, type=int)
+    parser.add_argument("--load_generated", help="Use VAE generated observational data for hypothesis testing", default=True, type=bool)
     args = parser.parse_args()
 
     if not os.path.exists(f'{args.hyp_test_dir}/rej_hyp_nums.csv'):

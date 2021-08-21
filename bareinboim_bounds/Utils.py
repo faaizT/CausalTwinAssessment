@@ -14,49 +14,49 @@ logging.basicConfig(
 )
 
 
-def get_trajec_actions(trajectories, column):
+def get_trajec_actions(trajectories):
     trajec_actions = pd.DataFrame()
     for index, row in trajectories.iterrows():
         if row['t'] == 0 and index > 0:
-            trajec_actions = trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, column: col_traj}, ignore_index=True)
+            trajec_actions = trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, 'x_t': col_traj}, ignore_index=True)
             actions = [row['A_t']]
-            col_traj = [row[column]]
+            col_traj = [row['x_t']]
             gender = row['gender']
             age = row['age']
         elif index == 0:
             age = row['age']
             actions = [row['A_t']]
-            col_traj = [row[column]]
+            col_traj = [row['x_t']]
             gender = row['gender']
         else:
             age = row['age']
             actions.append(row['A_t'])
-            col_traj.append(row[column])
+            col_traj.append(row['x_t'])
             gender = row['gender']
-    trajec_actions = trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, column: col_traj}, ignore_index=True)
+    trajec_actions = trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, 'x_t': col_traj}, ignore_index=True)
     return trajec_actions
 
 
-def get_sim_trajec_actions(sim_trajecs, column):
+def get_sim_trajec_actions(sim_trajecs):
     sim_trajec_actions = pd.DataFrame()
     for index, row in sim_trajecs.iterrows():
         if row['t'] == 0 and index > 0:
-            sim_trajec_actions = sim_trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, column: col_traj}, ignore_index=True)
+            sim_trajec_actions = sim_trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, 'x_t': col_traj}, ignore_index=True)
             age = row['age']
             actions = [row['A_t']]
-            col_traj = [row[column]]
+            col_traj = [row['x_t']]
             gender = row['gender']
         elif index == 0:
             age = row['age']
             actions = [row['A_t']]
-            col_traj = [row[column]]
+            col_traj = [row['x_t']]
             gender = row['gender']
         else:
             age = row['age']
             actions.append(row['A_t'])
-            col_traj.append(row[column])
+            col_traj.append(row['x_t'])
             gender = row['gender']
-    sim_trajec_actions = sim_trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, column: col_traj}, ignore_index=True)
+    sim_trajec_actions = sim_trajec_actions.append({'actions': actions, 'gender': gender, 'age': age, 'x_t': col_traj}, ignore_index=True)
     sim_trajec_actions['icustay_id'] = sim_trajecs['icustay_id'].unique()
     return sim_trajec_actions
 
@@ -90,25 +90,25 @@ def compute_probs_deprecated(trajec_actions, column):
     return trajec_actions
 
 
-def compute_probs(trajec_actions, column, column_v, gender, age, actions):
+def compute_probs(trajec_actions, x_trajec, gender, age, actions):
     prob_a_den = 0
     gamma = []
     df = pd.DataFrame()
-    df[[f'{column}_0',f'{column}_1',f'{column}_2',f'{column}_3']] = pd.DataFrame(trajec_actions[column].tolist(), index= trajec_actions.index)
+    df[[f'x_0',f'x_1',f'x_2',f'x_3']] = pd.DataFrame(trajec_actions['x_t'].tolist(), index= trajec_actions.index)
     df[[f'a_0',f'a_1',f'a_2',f'a_3']] = pd.DataFrame(trajec_actions['actions'].tolist(), index= trajec_actions.index)
     trajecs_filtered = (trajec_actions['gender'] == gender) & (trajec_actions['age'] == age)
     num_term = trajecs_filtered
     den_term_1 = trajecs_filtered
     den_term_2 = trajecs_filtered
     for i in range(len(actions)):
-        num_term = num_term & (df[f'{column}_{i}'] == column_v[i]) & (df[f'a_{i}'] == actions[i])
+        num_term = num_term & (df[f'x_{i}'] == x_trajec[i]) & (df[f'a_{i}'] == actions[i])
         prob_a_num = num_term.sum()
         if i == 0:
-            den_term_1 = den_term_1 & (df[f'{column}_{i}'] == column_v[i])
+            den_term_1 = den_term_1 & (df[f'x_{i}'] == x_trajec[i])
             prob_a_den += den_term_1.sum()
         else:
-            den_term_1 = den_term_1 & (df[f'{column}_{i}'] == column_v[i]) & (df[f'a_{i-1}'] == actions[i-1])
-            den_term_2 = den_term_2 & (df[f'{column}_{i-1}'] == column_v[i-1]) & (df[f'a_{i-1}'] == actions[i-1])
+            den_term_1 = den_term_1 & (df[f'x_{i}'] == x_trajec[i]) & (df[f'a_{i-1}'] == actions[i-1])
+            den_term_2 = den_term_2 & (df[f'x_{i-1}'] == x_trajec[i-1]) & (df[f'a_{i-1}'] == actions[i-1])
             prob_a_den += den_term_1.sum() - den_term_2.sum()
         if prob_a_num == 0:
             gamma.append(0)
@@ -157,31 +157,27 @@ def bootstrap_distribution_deprecated(col, gender, age, action, column_v, trajec
     return None
 
 
-def bootstrap_distribution_(col, gender, age, action, column_v, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=3):
-    sim_data = sim_data.rename(columns={col: f'{col}_raw'})
-    MIMICtable = MIMICtable.rename(columns={col: f'{col}_raw'})
-    sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', col]].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
-    obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', col]].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])    
-    sim.loc[:,f'{col}_tuple'] = sim[col].apply(tuple)
+def bootstrap_distribution_(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=3):
+    sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+    obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+    sim.loc[:,f'x_tuple'] = sim['x_t'].apply(tuple)
     sim.loc[:,f'actions_tuple'] = sim['actions'].apply(tuple)
-    obs_data.loc[:,f'{col}_tuple'] = obs_data[col].apply(tuple)
+    obs_data.loc[:,f'x_tuple'] = obs_data['x_t'].apply(tuple)
     obs_data.loc[:,f'actions_tuple'] = obs_data['actions'].apply(tuple)
     df = pd.DataFrame()
-    # max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & find_elements_containing(obs_data[col], max(column_v)), f'{col}_raw'].max()
-    # min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & find_elements_containing(obs_data[col], min(column_v)), f'{col}_raw'].min()
-    max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data[col].apply(lambda x: x[-1]) == column_v[-1]), f'{col}_raw'].max()
-    min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data[col].apply(lambda x: x[-1]) == column_v[-1]), f'{col}_raw'].min()
-    sim_filtered = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'{col}_tuple']==tuple(column_v)) & (sim['actions_tuple'] == tuple(action))].copy()
-    real_filtered = obs_data[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data[f'{col}_tuple']==tuple(column_v)) & (obs_data['actions_tuple'] == tuple(action))].copy()
+    max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[-1]) == x_trajec[-1]), col].max()
+    min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[-1]) == x_trajec[-1]), col].min()
+    sim_filtered = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'x_tuple']==tuple(x_trajec)) & (sim['actions_tuple'] == tuple(action))].copy()
+    real_filtered = obs_data[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data[f'x_tuple']==tuple(x_trajec)) & (obs_data['actions_tuple'] == tuple(action))].copy()
     if len(real_filtered) > 1 and len(sim_filtered) > 1:
         for j in range(n_iter):
             obs_resampled = resample(obs_data, n_samples=len(obs_data))
-            probs = compute_probs(obs_resampled, col, column_v, gender, age, action)
+            probs = compute_probs(obs_resampled, x_trajec, gender, age, action)
             prob = probs[i]
             real_train = resample(real_filtered, n_samples=len(real_filtered))
-            exp_y = real_train[f'{col}_raw'].mean()
+            exp_y = real_train[col].mean()
             sim_train = resample(sim_filtered, n_samples=len(sim_filtered))
-            exp_y_sim = sim_train[f'{col}_raw'].mean()
+            exp_y_sim = sim_train[col].mean()
             df = df.append({'Exp_y': exp_y, 'UB': prob*exp_y + (1-prob)*max_y, 'LB': prob*exp_y + (1-prob)*min_y, 'Sim_exp_y': exp_y_sim, 'max_y':max_y, 'min_y': min_y}, ignore_index=True)
         return df
     return None
@@ -218,10 +214,10 @@ def rejected_hypotheses_bootstrap(col, trajec_actions, sim_trajec_actions):
 
 def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable):
     T = 4
-    state_actions = trajec_actions[['gender', 'age', 'actions', col]].copy()
+    state_actions = trajec_actions[['gender', 'age', 'actions', 'x_t']].copy()
     state_actions.loc[:,'a'] = state_actions['actions'].apply(tuple)
-    state_actions.loc[:,'s'] = state_actions[col].apply(tuple)
-    state_actions = state_actions.drop_duplicates(['gender', 'age', 'a', 's'])
+    state_actions.loc[:,'s'] = state_actions['x_t'].apply(tuple)
+    state_actions = state_actions.groupby(by=['gender', 'age', 'a', 's']).filter(lambda x: len(x) >= 10).drop_duplicates(['gender', 'age', 'a', 's'])
     total_hypotheses = len(state_actions)
     p_values = pd.DataFrame()
     counter = 0
@@ -231,16 +227,16 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
         p = 1
         p_ub, p_lb = [], []
         for t in range(T):
-            df = bootstrap_distribution_(col, row['gender'], row['age'], row['actions'], row[col], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=t)
+            df = bootstrap_distribution_(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=t)
             if df is not None:
                 p = min(p, ((df['LB'] <= df['Sim_exp_y']) & (df['UB'] >= df['Sim_exp_y'])).sum()/len(df))
         if df is not None:
-            p_values = p_values.append({'gender': row['gender'], 'age': row['age'], 'actions': row['actions'], col: row[col], 'p': p}, ignore_index=True)
+            p_values = p_values.append({'gender': row['gender'], 'age': row['age'], 'actions': row['actions'], 'x_t': row['x_t'], 'p': p}, ignore_index=True)
     if len(p_values) > 0:
         rej_hyps = p_values[(p_values['p']<0.05/total_hypotheses/T)].copy()
         for index, row in rej_hyps.iterrows():
-            rej_hyps.loc[index, 'n_real'] = (find_elements(trajec_actions['gender'], row['gender']) & find_elements(trajec_actions['age'], row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions[col], row[col])).sum()
-            rej_hyps.loc[index, 'n_sim'] = (find_elements(sim_trajec_actions['gender'], row['gender']) & find_elements(sim_trajec_actions['age'], row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions[col], row[col])).sum()
+            rej_hyps.loc[index, 'n_real'] = (find_elements(trajec_actions['gender'], row['gender']) & find_elements(trajec_actions['age'], row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions['x_t'], row['x_t'])).sum()
+            rej_hyps.loc[index, 'n_sim'] = (find_elements(sim_trajec_actions['gender'], row['gender']) & find_elements(sim_trajec_actions['age'], row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions['x_t'], row['x_t'])).sum()
     else:
         rej_hyps = pd.DataFrame()
     return len(rej_hyps), p_values, rej_hyps, total_hypotheses
@@ -269,28 +265,22 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_d
     trajectories['icustay_id'] = MIMICtable['icustay_id']
     trajectories['gender'] = MIMICtable['gender']
     trajectories['age'] = MIMICtable['age']
-    trajectories[column] = col_bins_obs
-    trajectories['A_t'] = MIMICtable['A_t']
+    trajectories['x_t'] = col_bins_obs
+    trajectories['A_t'] = MIMICtable['A']
     trajectories = trajectories[trajectories['t']!=4]
     
     sim_trajecs = pd.DataFrame()
     sim_trajecs['t'] = np.arange(len(sim_data))%5
     sim_trajecs['icustay_id'] = sim_data['icustay_id']
-    sim_trajecs[column] = col_bins_sim
+    sim_trajecs['x_t'] = col_bins_sim
     sim_trajecs = sim_trajecs[sim_trajecs['t']!=4]
     sim_trajecs = sim_trajecs.merge(trajectories[['t','icustay_id', 'A_t', 'gender', 'age']], left_on=['icustay_id', 't'], right_on=['icustay_id', 't'])
     
-    trajec_actions = get_trajec_actions(trajectories, column)
-    sim_trajec_actions = get_sim_trajec_actions(sim_trajecs, column)
+    trajec_actions = get_trajec_actions(trajectories)
+    sim_trajec_actions = get_sim_trajec_actions(sim_trajecs)
     icustayids = MIMICtable['icustay_id'].unique()
     trajec_actions['icustay_id'] = icustayids
     logging.info("Simulator and Observational data ready")
-    
-    mimic_data_last_time = MIMICtable[MIMICtable['bloc'] == 5].drop(columns=column)
-    trajec_actions = trajec_actions.merge(mimic_data_last_time, left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
-
-    sim_data_last_time = sim_data[sim_data['bloc'] == 5].drop(columns=column)
-    sim_trajec_actions = sim_trajec_actions.merge(sim_data_last_time, left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     
     trajec_actions.to_csv(f'{hyp_test_dir}/trajec_actions_{column}.csv', index=False)
     sim_trajec_actions.to_csv(f'{hyp_test_dir}/sim_trajec_actions_{column}.csv', index=False)
@@ -299,8 +289,8 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_d
     return num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions
 
 def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bin):
-    trajec_actions = pd.read_csv(f"{directory}/trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
-    sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions_{column}.csv", converters={'actions': eval, column: eval})
+    trajec_actions = pd.read_csv(f"{directory}/trajec_actions_{column}.csv", converters={'actions': eval, 'x_t': eval})
+    sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions_{column}.csv", converters={'actions': eval, 'x_t': eval})
     if sofa_bin == 0:
         logging.info(f'Sofa bin: {sofa_bin}')
         trajec_actions = trajec_actions[trajec_actions['SOFA'] <= 6]
