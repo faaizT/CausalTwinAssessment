@@ -436,6 +436,7 @@ def preprocess_data(args):
     logging.info("Preprocessing data")
     extension = 'final_.csv'
     all_filenames = [i for i in glob.glob((args.sim_path + '/*{}').format(extension))]
+    all_filenames += [i for i in glob.glob(f'{args.sim_path}/synthetic_data/*{extension}')]
     pulse_data = pd.concat([pd.read_csv(f) for f in all_filenames ])
     pulse_data['icustay_id'] = pulse_data['id'].astype(int)
     pulse_data = pulse_data.reset_index()
@@ -447,8 +448,14 @@ def preprocess_data(args):
     pulse_data = pulse_data.rename(columns=pulse_rename)
 
     MIMICtable = pd.read_csv(f"{args.obs_path}/MIMIC-1hourly-length-5-train.csv")
+    # We only use synthetic data as it contains the actions administered to patients in simulator
+    MIMIC_generated_males = pd.read_csv(args.obs_path + '/MIMIC-generated-length-5-gender-0.0.csv')
+    MIMIC_generated_females = pd.read_csv(args.obs_path + '/MIMIC-generated-length-5-gender-1.0.csv')
+    MIMICtable_semi_synth = pd.concat([MIMICtable, MIMIC_generated_males, MIMIC_generated_females], ignore_index=True)
+
     MIMICtable['icustay_id'] = MIMICtable['icustay_id'].astype(int)
-    MIMICtable = create_action_bins(MIMICtable, args.nra)
+    MIMICtable_semi_synth['icustay_id'] = MIMICtable_semi_synth['icustay_id'].astype(int)
+    # MIMICtable = create_action_bins(MIMICtable, args.nra)
     
     MIMICtable_filtered_t0 = MIMICtable[MIMICtable['bloc']==1].reset_index()
     MIMICtable_filtered_t1 = MIMICtable[MIMICtable['bloc']==2][[
@@ -469,10 +476,10 @@ def preprocess_data(args):
     pulse_data_t2 = pulse_data[pulse_data['index']==3].reset_index(drop=True)
     pulse_data_t3 = pulse_data[pulse_data['index']==4].reset_index(drop=True)
 
-    pulse_data_t0 = MIMICtable[MIMICtable['bloc']==2][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t0, on=['icustay_id'])
-    pulse_data_t1 = MIMICtable[MIMICtable['bloc']==3][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t1, on=['icustay_id'])
-    pulse_data_t2 = MIMICtable[MIMICtable['bloc']==4][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t2, on=['icustay_id'])
-    pulse_data_t3 = MIMICtable[MIMICtable['bloc']==5][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t3, on=['icustay_id'])
+    pulse_data_t0 = MIMICtable_semi_synth[MIMICtable_semi_synth['bloc']==2][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t0, on=['icustay_id'])
+    pulse_data_t1 = MIMICtable_semi_synth[MIMICtable_semi_synth['bloc']==3][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t1, on=['icustay_id'])
+    pulse_data_t2 = MIMICtable_semi_synth[MIMICtable_semi_synth['bloc']==4][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t2, on=['icustay_id'])
+    pulse_data_t3 = MIMICtable_semi_synth[MIMICtable_semi_synth['bloc']==5][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t3, on=['icustay_id'])
 
     pulse_data_t0 = pd.concat([pulse_data_t0, pulse_data_t1, pulse_data_t2])
     pulse_data_t1 = pd.concat([pulse_data_t1, pulse_data_t2, pulse_data_t3])
@@ -482,6 +489,7 @@ def preprocess_data(args):
 
     pulse_data_t0['icustay_id'] = np.arange(len(pulse_data_t0))
     pulse_data_t1['icustay_id'] = np.arange(len(pulse_data_t1))
+    logging.info(f"Pulse data length: {len(pulse_data_t0)}")
 
     logging.info('Processing raw data')
     # all 47 columns of interest
