@@ -204,7 +204,7 @@ def main(args):
 
     logging.info(f'Outcome: {args.col_name}')
     if args.saved_dir is not None:
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing_saved(args.col_name, args.saved_dir, sim_data, MIMICtable, args.sofa_bin)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing_saved(args.col_name, args.saved_dir, sim_data, MIMICtable, args.sofa_bin, args.use_kmeans)
     else:
         num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, args.hyp_test_dir, args.use_kmeans)
     

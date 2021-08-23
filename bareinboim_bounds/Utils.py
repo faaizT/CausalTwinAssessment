@@ -187,7 +187,7 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
     state_actions = trajec_actions[['gender', 'age', 'actions', 'x_t']].copy()
     state_actions.loc[:,'a'] = state_actions['actions'].apply(tuple)
     state_actions.loc[:,'s'] = state_actions['x_t'].apply(tuple)
-    state_actions = state_actions.groupby(by=['gender', 'age', 'a', 's']).filter(lambda x: len(x) >= 25).drop_duplicates(['gender', 'age', 'a', 's'])
+    state_actions = state_actions.groupby(by=['gender', 'age', 'a', 's']).filter(lambda x: len(x) >= 10).drop_duplicates(['gender', 'age', 'a', 's'])
     total_hypotheses = len(state_actions)
     p_values = pd.DataFrame()
     counter = 0
@@ -207,6 +207,9 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
         for index, row in rej_hyps.iterrows():
             rej_hyps.loc[index, 'n_real'] = (find_elements(trajec_actions['gender'], row['gender']) & find_elements(trajec_actions['age'], row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions['x_t'], row['x_t'])).sum()
             rej_hyps.loc[index, 'n_sim'] = (find_elements(sim_trajec_actions['gender'], row['gender']) & find_elements(sim_trajec_actions['age'], row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions['x_t'], row['x_t'])).sum()
+        for index, row in p_values.iterrows():
+            p_values.loc[index, 'n_real'] = ((trajec_actions['gender'] == row['gender']) & (trajec_actions['age'] == row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions['x_t'], row['x_t'])).sum()
+            p_values.loc[index, 'n_sim'] = ((sim_trajec_actions['gender'] == row['gender']) & (sim_trajec_actions['age'] == row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions['x_t'], row['x_t'])).sum()
     else:
         rej_hyps = pd.DataFrame()
     return len(rej_hyps), p_values, rej_hyps, total_hypotheses
@@ -222,9 +225,9 @@ def get_col_bin(col_v, col_name, col_bins_num, MIMICtable, col_bins_obs):
 
 x_columns = ['Weight_kg', 'paCO2', 'paO2', 'HCO3', 'Arterial_pH', 'Calcium', 'Chloride', 'DiaBP', 'Glucose', 'MeanBP', 'Potassium', 'RR', 'Temp_C', 'Sodium', 'SysBP', 'HR']
 
-def get_col_bins(MIMICtable, sim_data, use_kmeans):
+def get_col_bins(MIMICtable, sim_data, use_kmeans, col_bins_num):
     if use_kmeans:
-        kmeans = KMeans(n_clusters=4, random_state=0).fit((MIMICtable[x_columns]-MIMICtable[x_columns].mean())/MIMICtable[x_columns].std())
+        kmeans = KMeans(n_clusters=col_bins_num, random_state=0).fit((MIMICtable[x_columns]-MIMICtable[x_columns].mean())/MIMICtable[x_columns].std())
         col_bins_obs = kmeans.labels_
         col_bins_sim = kmeans.predict((sim_data[x_columns] - MIMICtable[x_columns].mean())/MIMICtable[x_columns].std())
     else:
@@ -236,7 +239,7 @@ def get_col_bins(MIMICtable, sim_data, use_kmeans):
 
 def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_dir, use_kmeans):
     logging.info("doing hypothesis testing")
-    col_bins_obs, col_bins_sim = get_col_bins(MIMICtable, sim_data, use_kmeans)
+    col_bins_obs, col_bins_sim = get_col_bins(MIMICtable, sim_data, use_kmeans, col_bins_num)
     logging.info("Extracted column bins for simulator data")
 
     trajectories = pd.DataFrame()
@@ -262,16 +265,23 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_d
     logging.info(f'icustayids length: {len(icustayids)}')
     trajec_actions.loc[:,'icustay_id'] = icustayids
     logging.info("Simulator and Observational data ready")
-    
-    trajec_actions.to_csv(f'{hyp_test_dir}/trajec_actions_{column}.csv', index=False)
-    sim_trajec_actions.to_csv(f'{hyp_test_dir}/sim_trajec_actions_{column}.csv', index=False)
+    if use_kmeans:
+        trajec_actions.to_csv(f'{hyp_test_dir}/trajec_actions.csv', index=False)
+        sim_trajec_actions.to_csv(f'{hyp_test_dir}/sim_trajec_actions.csv', index=False)
+    else:
+        trajec_actions.to_csv(f'{hyp_test_dir}/trajec_actions_{column}.csv', index=False)
+        sim_trajec_actions.to_csv(f'{hyp_test_dir}/sim_trajec_actions_{column}.csv', index=False)
 
     num_rej_hyps, p_values, rej_hyps, total_hypotheses = rejected_hypotheses_bootstrap_trajectories(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
     return num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions
 
-def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bin):
-    trajec_actions = pd.read_csv(f"{directory}/trajec_actions_{column}.csv", converters={'actions': eval, 'x_t': eval})
-    sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions_{column}.csv", converters={'actions': eval, 'x_t': eval})
+def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bin, use_kmeans):
+    if use_kmeans:
+        trajec_actions = pd.read_csv(f"{directory}/trajec_actions.csv", converters={'actions': eval, 'x_t': eval})
+        sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions.csv", converters={'actions': eval, 'x_t': eval})
+    else:
+        trajec_actions = pd.read_csv(f"{directory}/trajec_actions_{column}.csv", converters={'actions': eval, 'x_t': eval})
+        sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions_{column}.csv", converters={'actions': eval, 'x_t': eval})
     if sofa_bin == 0:
         logging.info(f'Sofa bin: {sofa_bin}')
         trajec_actions = trajec_actions[trajec_actions['SOFA'] <= 6]
