@@ -47,7 +47,7 @@ def write_to_file(file_name, col_name, num_rejected, total_hypotheses, sofa_bin)
         f.write(col_name + ',' + str(num_rejected) + ',' + str(total_hypotheses) + ',' + str(sofa_bin) + os.linesep)
 
 
-def load_pulse_data(sim_path, MIMICtable):
+def load_pulse_data(sim_path, MIMICtable, load_generated):
     column_mappings = {
         'Albumin - BloodConcentration (mg/L)': 'Albumin',
         'ArterialCarbonDioxidePressure (mmHg)': 'paCO2',
@@ -71,6 +71,10 @@ def load_pulse_data(sim_path, MIMICtable):
     }
     extension = 'final_.csv'
     all_filenames = [i for i in glob.glob(f'{args.sim_path}/*{extension}')]
+    if load_generated:
+        all_filenames += [i for i in glob.glob(f'{args.sim_path}/synthetic_data/*{extension}')]
+
+    logging.info(f"Total number of simulated trajectories: {len(all_filenames)}")
     sim_data = pd.concat([pd.read_csv(f) for f in all_filenames ])
     sim_data = sim_data.rename(columns={'id': 'icustay_id'})
     sim_data['icustay_id'] = sim_data['icustay_id'].astype(int)
@@ -194,7 +198,7 @@ def main(args):
 
     MIMICtable = load_mimic_data(args.obs_path, args.load_generated)
     if args.sim_name == "pulse":
-        sim_data = load_pulse_data(args.sim_path, MIMICtable)
+        sim_data = load_pulse_data(args.sim_path, MIMICtable, args.load_generated)
     else:
         sim_data = load_biogears_data(args.sim_path, MIMICtable)
 
@@ -202,7 +206,7 @@ def main(args):
     if args.saved_dir is not None:
         num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing_saved(args.col_name, args.saved_dir, sim_data, MIMICtable, args.sofa_bin)
     else:
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, args.hyp_test_dir)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions = do_hypothesis_testing(args.col_name, MIMICtable, sim_data, args.col_bin_num, args.hyp_test_dir, args.use_kmeans)
     
     write_to_file(f'{args.hyp_test_dir}/rej_hyp_nums.csv', args.col_name, num_rej_hyps, total_hypotheses, args.sofa_bin)
     if args.sofa_bin is None:
@@ -224,6 +228,7 @@ if __name__=="__main__":
     parser.add_argument("--saved_dir", help="Location of saved processed data", default=None)
     parser.add_argument("--sofa_bin", help="Splits data into SOFA bins before running hypothesis tests", default=None, type=int)
     parser.add_argument("--load_generated", help="Use VAE generated observational data for hypothesis testing", default=True, type=bool)
+    parser.add_argument("--use_kmeans", help="Use k-means to discretize the state space", default=True, type=bool)
     args = parser.parse_args()
 
     if not os.path.exists(f'{args.hyp_test_dir}/rej_hyp_nums.csv'):
