@@ -164,17 +164,17 @@ def train_yminmax(data, quantile_data, quantile_data_bootstrap, models_dir, mode
 def train_ysim(data, sim_data, sim_bootstrap, models_dir, model, false_sim=False):
     training_ids = sim_bootstrap[['episode', 't']].apply(lambda x: (x[0], x[1]), axis=1).unique()
     include_in_testing = ~sim_data[['episode', 't']].apply(lambda x: (x[0], x[1]), axis=1).isin(training_ids)
-    test_data = sim_data[include_in_testing]
+    test_data = sim_data.loc[include_in_testing]
     X = torch.FloatTensor(normalise(sim_bootstrap, data).values)
     Xtest = torch.FloatTensor(normalise(test_data, data).values)
     A = torch.FloatTensor(sim_bootstrap['A'].values).to(torch.long)
     Atest = torch.FloatTensor(test_data['A'].values).to(torch.long)
     if false_sim:
         epsilon = 0.0015
-        sim_bootstrap.loc[:, f'{outcome}_t1'] -= epsilon
-        test_data.loc[:, f'{outcome}_t1'] -= epsilon
-    Y = torch.FloatTensor((sim_bootstrap[f'{outcome}_t1'] - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
-    Ytest = torch.FloatTensor((test_data[f'{outcome}_t1'] - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
+    else:
+        epsilon = 0
+    Y = torch.FloatTensor((sim_bootstrap[f'{outcome}_t1'] - epsilon - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
+    Ytest = torch.FloatTensor((test_data[f'{outcome}_t1'] - epsilon - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
     
     train = data_utils.TensorDataset(torch.column_stack((X, A)), Y)
     trainloader = torch.utils.data.DataLoader(train, batch_size=32)
