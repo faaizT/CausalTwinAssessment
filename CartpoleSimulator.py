@@ -38,7 +38,6 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--files_dir", help="path to data directory", default="/data/ziz/taufiq/export-dir")
     parser.add_argument("--models_dir", help="Directory to save trained models", required=True)
-    parser.add_argument("--nr_reps", help="Number of models to be trained", default=2, type=int)
     parser.add_argument("--model", help="Model number", type=int, required=True)
     args = parser.parse_args()
 
