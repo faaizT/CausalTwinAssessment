@@ -117,13 +117,13 @@ def train_yminmax(data, quantile_data, quantile_data_bootstrap, models_dir, mode
     Y = torch.FloatTensor((quantile_data_bootstrap[f'{outcome}_t1'] - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
     Ytest = torch.FloatTensor((test_data[f'{outcome}_t1'] - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
 
-    train = data_utils.TensorDataset(torch.column_stack((X, A)), Y)
+    train = data_utils.TensorDataset(X, Y)
     trainloader = torch.utils.data.DataLoader(train, batch_size=32)
-    test = data_utils.TensorDataset(torch.column_stack((Xtest, Atest)), Ytest)
+    test = data_utils.TensorDataset(Xtest, Ytest)
     testloader = torch.utils.data.DataLoader(test, batch_size=32)
 
     loss_func = PinballLoss(quantile=0.99999, reduction='mean')
-    ymax_net = Net(n_feature=len(x_columns)+1, n_hidden=4, n_output=1)
+    ymax_net = Net(n_feature=len(x_columns), n_hidden=4, n_output=1)
     optimizer = torch.optim.SGD(ymax_net.parameters(), lr=0.001)
 
     for epoch in tqdm(range(100)):
@@ -142,7 +142,7 @@ def train_yminmax(data, quantile_data, quantile_data_bootstrap, models_dir, mode
     torch.save(ymax_net.state_dict(), f'{models_dir}/ymax_{model}')
 
     loss_func = PinballLoss(quantile=0.00001, reduction='mean')
-    ymin_net = Net(n_feature=len(x_columns)+1, n_hidden=4, n_output=1)
+    ymin_net = Net(n_feature=len(x_columns), n_hidden=4, n_output=1)
     optimizer = torch.optim.SGD(ymin_net.parameters(), lr=0.001)
 
     for epoch in tqdm(range(100)):
