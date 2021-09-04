@@ -217,8 +217,8 @@ def load_and_preprocess_data(args):
     df_partial['Pole Angular Velocity'] = df_partial['Pole Angular Velocity'].abs()
     df_partial['Cart Velocity'] = df_partial['Cart Velocity'].abs()
     df_partial.rename(columns={'Pole Angular Velocity': 'Pole Angular Velocity (abs)', 'Cart Velocity': 'Cart Velocity (abs)'}, inplace=True)
-    sim_data = pd.read_csv(f'{args.files_dir}/Cartpole-v1-sim-data.csv')
-    quantile_data = sim_data.copy()
+    sim_data = pd.read_csv(f'{args.files_dir}/Cartpole-v1-sim-data-rand-policy.csv')
+    quantile_data = pd.read_csv(f'{args.files_dir}/Cartpole-v1-sim-data.csv')
     obs_data_train = pd.read_csv(f'{args.files_dir}/Cartpole-v1-obs-data-train.csv')
     return df_partial, sim_data, obs_data_train, quantile_data
 
