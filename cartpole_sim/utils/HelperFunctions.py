@@ -14,7 +14,9 @@ import pandas as pd
 import logging
 import wandb
 
-x_columns = ['Cart Position', 'Cart Velocity (abs)', 'Pole Angle', 'Pole Angular Velocity (abs)']
+# x_columns = ['Cart Position', 'Cart Velocity (abs)', 'Pole Angle', 'Pole Angular Velocity (abs)']
+x_columns = ['Cart Position', 'Pole Angle']
+
 outcome = "Pole Angle"
 
 def log_policy_accuracy(policy, Xtest, Ytest, epoch, model):
@@ -117,13 +119,13 @@ def train_yminmax(data, quantile_data, quantile_data_bootstrap, models_dir, mode
     Y = torch.FloatTensor((quantile_data_bootstrap[f'{outcome}_t1'] - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
     Ytest = torch.FloatTensor((test_data[f'{outcome}_t1'] - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
 
-    train = data_utils.TensorDataset(X, Y)
+    train = data_utils.TensorDataset(torch.column_stack((X, A)), Y)
     trainloader = torch.utils.data.DataLoader(train, batch_size=32)
-    test = data_utils.TensorDataset(Xtest, Ytest)
+    test = data_utils.TensorDataset(torch.column_stack((Xtest, Atest)), Ytest)
     testloader = torch.utils.data.DataLoader(test, batch_size=32)
 
-    loss_func = PinballLoss(quantile=0.99999, reduction='mean')
-    ymax_net = Net(n_feature=len(x_columns), n_hidden=4, n_output=1)
+    loss_func = PinballLoss(quantile=0.99, reduction='mean')
+    ymax_net = Net(n_feature=len(x_columns)+1, n_hidden=4, n_output=1)
     optimizer = torch.optim.SGD(ymax_net.parameters(), lr=0.001)
 
     for epoch in tqdm(range(100)):
@@ -139,10 +141,10 @@ def train_yminmax(data, quantile_data, quantile_data_bootstrap, models_dir, mode
                 test_loss += loss_func(ymax_net(Xtest), Ytest)
             test_loss = test_loss/len(testloader)
             wandb.log({'epoch': epoch, f'ymax - {model}': test_loss})
-    torch.save(ymax_net.state_dict(), f'{models_dir}/ymax_{model}')
+    torch.save(ymax_net.state_dict(), f'{models_dir}/ymax_99_{model}')
 
-    loss_func = PinballLoss(quantile=0.00001, reduction='mean')
-    ymin_net = Net(n_feature=len(x_columns), n_hidden=4, n_output=1)
+    loss_func = PinballLoss(quantile=0.01, reduction='mean')
+    ymin_net = Net(n_feature=len(x_columns)+1, n_hidden=4, n_output=1)
     optimizer = torch.optim.SGD(ymin_net.parameters(), lr=0.001)
 
     for epoch in tqdm(range(100)):
@@ -158,7 +160,7 @@ def train_yminmax(data, quantile_data, quantile_data_bootstrap, models_dir, mode
                 test_loss += loss_func(ymin_net(Xtest), Ytest)
             test_loss = test_loss/len(testloader)
             wandb.log({'epoch': epoch, f'ymin - {model}': test_loss})
-    torch.save(ymin_net.state_dict(), f'{models_dir}/ymin_{model}')
+    torch.save(ymin_net.state_dict(), f'{models_dir}/ymin_01_{model}')
 
 
 def train_ysim(data, sim_data, sim_bootstrap, models_dir, model, false_sim=False):
@@ -170,11 +172,13 @@ def train_ysim(data, sim_data, sim_bootstrap, models_dir, model, false_sim=False
     A = torch.FloatTensor(sim_bootstrap['A'].values).to(torch.long)
     Atest = torch.FloatTensor(test_data['A'].values).to(torch.long)
     if false_sim:
-        epsilon = 0.0015
+        epsilon = 0.005*(sim_bootstrap['A']==1.0) - 0.005*(sim_bootstrap['A']==0)
+        epsilon_test = 0.005*(test_data['A']==1.0) - 0.005*(test_data['A']==0)
     else:
         epsilon = 0
-    Y = torch.FloatTensor((sim_bootstrap[f'{outcome}_t1'] - epsilon - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
-    Ytest = torch.FloatTensor((test_data[f'{outcome}_t1'] - epsilon - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
+        epsilon_test = 0
+    Y = torch.FloatTensor((sim_bootstrap[f'{outcome}_t1'] + epsilon - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
+    Ytest = torch.FloatTensor((test_data[f'{outcome}_t1'] + epsilon_test - data[outcome].mean()).values/data[outcome].std()).unsqueeze(dim=1)
     
     train = data_utils.TensorDataset(torch.column_stack((X, A)), Y)
     trainloader = torch.utils.data.DataLoader(train, batch_size=32)
@@ -183,7 +187,7 @@ def train_ysim(data, sim_data, sim_bootstrap, models_dir, model, false_sim=False
 
     loss_func = torch.nn.MSELoss()
     sim_net = Net(n_feature=len(x_columns)+1, n_hidden=4, n_output=1)
-    optimizer = torch.optim.SGD(sim_net.parameters(), lr=0.01)
+    optimizer = torch.optim.SGD(sim_net.parameters(), lr=0.001)
 
     for epoch in tqdm(range(100)):
         for X, Y in trainloader:
@@ -203,7 +207,7 @@ def train_ysim(data, sim_data, sim_bootstrap, models_dir, model, false_sim=False
                 wandb.log({'epoch': epoch, f'ysim - {model}': test_loss})
 
     if false_sim:
-        torch.save(sim_net.state_dict(), f'{models_dir}/ysim_false_{model}')
+        torch.save(sim_net.state_dict(), f'{models_dir}/ysim_false2_{model}')
     else:
         torch.save(sim_net.state_dict(), f'{models_dir}/ysim_{model}')
 
@@ -211,15 +215,9 @@ def train_ysim(data, sim_data, sim_bootstrap, models_dir, model, false_sim=False
 def load_and_preprocess_data(args):
     logging.info("Preprocessing data")
     df = pd.read_csv(f"{args.files_dir}/Cartpole-v1-obs-data.csv")
-    df_partial = df.copy()
-    df_partial['Pole Angular Velocity (sign)'] = (df_partial['Pole Angular Velocity']>=0)*1 - (df_partial['Pole Angular Velocity']<0)*1
-    df_partial['Cart Velocity (sign)'] = (df_partial['Cart Velocity']>=0)*1 - (df_partial['Cart Velocity']<0)*1
-    df_partial['Pole Angular Velocity'] = df_partial['Pole Angular Velocity'].abs()
-    df_partial['Cart Velocity'] = df_partial['Cart Velocity'].abs()
-    df_partial.rename(columns={'Pole Angular Velocity': 'Pole Angular Velocity (abs)', 'Cart Velocity': 'Cart Velocity (abs)'}, inplace=True)
     sim_data = pd.read_csv(f'{args.files_dir}/Cartpole-v1-sim-data-rand-policy.csv')
-    quantile_data = pd.read_csv(f'{args.files_dir}/Cartpole-v1-sim-data.csv')
+    quantile_data = pd.read_csv(f'{args.files_dir}/Cartpole-v1-sim-data-rand-policy.csv')
     obs_data_train = pd.read_csv(f'{args.files_dir}/Cartpole-v1-obs-data-train.csv')
-    return df_partial, sim_data, obs_data_train, quantile_data
+    return df, sim_data, obs_data_train, quantile_data
 
 
