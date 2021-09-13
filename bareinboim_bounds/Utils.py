@@ -201,7 +201,7 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
             if df is not None:
                 p = min(p, ((df['LB'] <= df['Sim_exp_y']) & (df['UB'] >= df['Sim_exp_y'])).sum()/len(df))
         if df is not None:
-            p_values = p_values.append({'gender': row['gender'], 'age': row['age'], 'actions': row['actions'], 'x_t': row['x_t'], 'p': p}, ignore_index=True)
+            p_values = p_values.append({'gender': row['gender'], 'age': row['age'], 'actions': row['actions'], 'x_t': row['x_t'], 'p': p, 'Sim_exp_y': df['Sim_exp_y'].mean(), 'Exp_y': df['Exp_y'].mean()}, ignore_index=True)
     if len(p_values) > 0:
         rej_hyps = p_values[(p_values['p']<0.05/total_hypotheses/T)].copy()
         for index, row in rej_hyps.iterrows():
