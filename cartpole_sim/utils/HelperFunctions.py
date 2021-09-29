@@ -163,7 +163,7 @@ def train_yminmax(data, quantile_data, quantile_data_bootstrap, models_dir, mode
     torch.save(ymin_net.state_dict(), f'{models_dir}/ymin_01_{model}')
 
 
-def train_ysim(data, sim_data, sim_bootstrap, models_dir, model, false_sim=False):
+def train_ysim(data, sim_data, sim_bootstrap, models_dir, model, false_sim=False, perturbation=0):
     training_ids = sim_bootstrap[['episode', 't']].apply(lambda x: (x[0], x[1]), axis=1).unique()
     include_in_testing = ~sim_data[['episode', 't']].apply(lambda x: (x[0], x[1]), axis=1).isin(training_ids)
     test_data = sim_data.loc[include_in_testing]
@@ -172,8 +172,8 @@ def train_ysim(data, sim_data, sim_bootstrap, models_dir, model, false_sim=False
     A = torch.FloatTensor(sim_bootstrap['A'].values).to(torch.long)
     Atest = torch.FloatTensor(test_data['A'].values).to(torch.long)
     if false_sim:
-        epsilon = 0.005*(sim_bootstrap['A']==1.0) - 0.005*(sim_bootstrap['A']==0)
-        epsilon_test = 0.005*(test_data['A']==1.0) - 0.005*(test_data['A']==0)
+        epsilon = perturbation*(sim_bootstrap['A']==1.0) + perturbation*(sim_bootstrap['A']==0)
+        epsilon_test = perturbation*(test_data['A']==1.0) + perturbation*(test_data['A']==0)
     else:
         epsilon = 0
         epsilon_test = 0
@@ -207,7 +207,7 @@ def train_ysim(data, sim_data, sim_bootstrap, models_dir, model, false_sim=False
                 wandb.log({'epoch': epoch, f'ysim - {model}': test_loss})
 
     if false_sim:
-        torch.save(sim_net.state_dict(), f'{models_dir}/ysim_false2_{model}')
+        torch.save(sim_net.state_dict(), f'{models_dir}/ysim_false2_{model}_{perturbation}')
     else:
         torch.save(sim_net.state_dict(), f'{models_dir}/ysim_{model}')
 

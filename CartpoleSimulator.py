@@ -31,7 +31,7 @@ def main(args):
     train_yobs(df_partial, obs_data_train, obs_bootstrap, args.models_dir, args.model)
     train_yminmax(df_partial, quantile_data, quantile_data_bootstrap, args.models_dir, args.model)
     train_ysim(df_partial, sim_data, sim_bootstrap, args.models_dir, args.model, false_sim=False)
-    train_ysim(df_partial, sim_data, sim_bootstrap, args.models_dir, args.model, false_sim=True)
+    train_ysim(df_partial, sim_data, sim_bootstrap, args.models_dir, args.model, false_sim=True, perturbation=args.perturbation)
 
 
 if __name__=="__main__":
@@ -39,6 +39,7 @@ if __name__=="__main__":
     parser.add_argument("--files_dir", help="path to data directory", default="/data/ziz/taufiq/export-dir")
     parser.add_argument("--models_dir", help="Directory to save trained models", required=True)
     parser.add_argument("--model", help="Model number", type=int, required=True)
+    parser.add_argument("--perturbation", help="Perturbation of False Simulator", type=float, default=0.005)
     args = parser.parse_args()
 
     wandb.init(project="Carpole-Simulator", name=f"Model-{args.model}")
