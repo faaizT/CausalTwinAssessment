@@ -148,7 +148,7 @@ def bootstrap_distribution_(col, gender, age, action, x_trajec, trajec_actions, 
             exp_y = real_train[col].mean()
             sim_train = resample(sim_filtered, n_samples=len(sim_filtered))
             exp_y_sim = sim_train[col].mean()
-            df = df.append({'Exp_y': exp_y, 'UB': prob*exp_y + (1-prob)*max_y, 'LB': prob*exp_y + (1-prob)*min_y, 'Sim_exp_y': exp_y_sim, 'max_y':max_y, 'min_y': min_y}, ignore_index=True)
+            df = df.append({'Exp_y': exp_y, 'UB': prob*exp_y + (1-prob)*max_y, 'LB': prob*exp_y + (1-prob)*min_y, 'Sim_exp_y': exp_y_sim, 'max_y':max_y, 'min_y': min_y, 'M': (exp_y_sim - prob*exp_y)/(1-prob)}, ignore_index=True)
         return df
     return None
 
@@ -195,13 +195,15 @@ def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_a
         counter += 1
         logging.info(f"On hypothesis {counter}/{total_hypotheses}")
         p = 1
-        p_ub, p_lb = [], []
+        M_lower_quantile, M_upper_quantile = [], []
         for t in range(T):
             df = bootstrap_distribution_(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=t)
             if df is not None:
                 p = min(p, ((df['LB'] <= df['Sim_exp_y']) & (df['UB'] >= df['Sim_exp_y'])).sum()/len(df))
+                M_lower_quantile.append(df['M'].quantile(0.05))
+                M_upper_quantile.append(df['M'].quantile(0.95))
         if df is not None:
-            p_values = p_values.append({'gender': row['gender'], 'age': row['age'], 'actions': row['actions'], 'x_t': row['x_t'], 'p': p, 'Sim_exp_y': df['Sim_exp_y'].mean(), 'Exp_y': df['Exp_y'].mean()}, ignore_index=True)
+            p_values = p_values.append({'gender': row['gender'], 'age': row['age'], 'actions': row['actions'], 'x_t': row['x_t'], 'p': p, 'Sim_exp_y': df['Sim_exp_y'].mean(), 'Exp_y': df['Exp_y'].mean(), 'M_0.05_quantiles': M_lower_quantile , 'M_0.95_quantiles': M_upper_quantile}, ignore_index=True)
     if len(p_values) > 0:
         rej_hyps = p_values[(p_values['p']<0.05/total_hypotheses/T)].copy()
         for index, row in rej_hyps.iterrows():
