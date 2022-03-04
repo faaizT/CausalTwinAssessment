@@ -14,6 +14,8 @@ import wandb
 
 
 def main(args):
+    # preprocess_iid_obs_data(args)
+    # combine_data(args)
     df_partial, sim_data, obs_data_train, quantile_data = load_and_preprocess_data(args)
     obs_test_size = int(len(obs_data_train) / 5)
     obs_train_size = len(obs_data_train) - obs_test_size
@@ -36,8 +38,8 @@ def main(args):
     for quantile in args.quantiles:
         train_yminmax(
             df_partial,
-            quantile_data,
-            quantile_data_bootstrap,
+            obs_data_train,
+            obs_bootstrap,
             quantile,
             args.models_dir,
             args.model,
@@ -45,20 +47,26 @@ def main(args):
     train_ysim(
         df_partial,
         sim_data,
-        sim_bootstrap,
         args.models_dir,
         args.model,
         false_sim=False,
     )
-    train_ysim(
-        df_partial,
-        sim_data,
-        sim_bootstrap,
-        args.models_dir,
-        args.model,
-        false_sim=True,
-        perturbation=args.perturbation,
-    )
+
+    # train_fake_ysim(
+    #     df_partial, sim_data, sim_bootstrap, args.models_dir, args.model, args.noise_std
+    # )
+
+
+#######################
+# train_ysim(
+#     df_partial,
+#     sim_data,
+#     sim_bootstrap,
+#     args.models_dir,
+#     args.model,
+#     false_sim=True,
+#     perturbation=args.perturbation,
+# )
 
 
 if __name__ == "__main__":
@@ -69,9 +77,12 @@ if __name__ == "__main__":
         default="/data/ziz/taufiq/export-dir",
     )
     parser.add_argument(
-        "--models_dir", help="Directory to save trained models", required=True
+        "--models_dir",
+        help="Directory to save trained models",
+        type=str,
+        default="/data/ziz/not-backed-up/taufiq/Cartpole/cartpole-models",
     )
-    parser.add_argument("--model", help="Model number", type=int, required=True)
+    parser.add_argument("--model", help="Model number", type=int, default=0)
     parser.add_argument(
         "--quantiles",
         help="Worst case quantiles",
@@ -85,6 +96,13 @@ if __name__ == "__main__":
         type=float,
         default=0.005,
     )
+    parser.add_argument(
+        "--noise_std",
+        help="Std of noise added to fake simulator",
+        type=float,
+        default=0.005,
+    )
+
     args = parser.parse_args()
 
     wandb.init(project="Carpole-Simulator", name=f"Model-{args.model}")
