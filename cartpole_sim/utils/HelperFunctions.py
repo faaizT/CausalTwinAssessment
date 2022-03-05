@@ -16,7 +16,7 @@ import wandb
 import os
 
 # x_columns = ['Cart Position', 'Cart Velocity (abs)', 'Pole Angle', 'Pole Angular Velocity (abs)']
-x_columns = ["Cart Position", "Pole Angle"]
+x_columns = ["Pole Angular Velocity", "Pole Angle"]
 
 outcome = "Pole Angle"
 
@@ -61,7 +61,7 @@ def train_policies(data, obs_data_train, obs_bootstrap, models_dir, model):
 
     loss_func = torch.nn.CrossEntropyLoss()
     policy = PolicyNetwork(input_dim=len(x_columns), output_dim=2)
-    optimizer = torch.optim.Adam(policy.parameters(), lr=0.0025, weight_decay=0.01)
+    optimizer = torch.optim.Adam(policy.parameters(), lr=0.001, weight_decay=0.01)
 
     for epoch in tqdm(range(100)):
         for data, label in trainloader:
@@ -326,7 +326,6 @@ def load_and_preprocess_data(args):
 
 
 def transform_data(filename):
-    x_columns = ["Cart Position", "Pole Angle"]
     rename_cols_t1 = {k: f"{k}_t1" for k in x_columns}
     data = pd.read_csv(filename)
     combined_data = pd.DataFrame()
@@ -367,19 +366,20 @@ def preprocess_iid_sim_data(args):
 def preprocess_iid_obs_data(args):
     data = pd.DataFrame()
     for i in tqdm(range(500)):
-        file_path = f"/data/localhost/not-backed-up/taufiq/Cartpole/Cartpole-v1-obs-data-run{i}-ep100-combined.csv"
+        file_path = f"/data/localhost/not-backed-up/taufiq/Cartpole/obs-data-epsilon-0.3/Cartpole-v1-obs-data-run{i}-ep100.csv"
         if os.path.exists(file_path):
             df = pd.read_csv(file_path)
             data = data.append(df.groupby("episode").sample(), ignore_index=True)
     data.to_csv(
-        "/data/localhost/taufiq/export-dir/Cartpole-v1-obs-data-iid.csv", index=False
+        "/data/localhost/taufiq/export-dir/Cartpole-v1-obs-data-iid-eps0.3.csv",
+        index=False,
     )
     p = np.random.rand(len(data))
     data[p < 0.8].to_csv(
-        "/data/localhost/taufiq/export-dir/Cartpole-v1-obs-data-iid-train.csv",
+        "/data/localhost/taufiq/export-dir/Cartpole-v1-obs-data-iid-eps0.3-train.csv",
         index=False,
     )
     data[p >= 0.8].to_csv(
-        "/data/localhost/taufiq/export-dir/Cartpole-v1-obs-data-iid-test.csv",
+        "/data/localhost/taufiq/export-dir/Cartpole-v1-obs-data-iid-eps0.3-test.csv",
         index=False,
     )

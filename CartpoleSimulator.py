@@ -74,13 +74,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--files_dir",
         help="path to data directory",
-        default="/data/ziz/taufiq/export-dir",
+        default="/data/blackneckedswan/not-backed-up/scratch/taufiq/export-dir",
     )
     parser.add_argument(
         "--models_dir",
         help="Directory to save trained models",
         type=str,
-        default="/data/ziz/not-backed-up/taufiq/Cartpole/cartpole-models",
+        default="/data/blackneckedswan/not-backed-up/scratch/taufiq/Cartpole/models-new-x",
     )
     parser.add_argument("--model", help="Model number", type=int, default=0)
     parser.add_argument(
