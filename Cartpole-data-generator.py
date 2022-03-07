@@ -78,6 +78,10 @@ class DQL:
             self.update(states, targets)
 
 
+x_columns = ["Cart Position", "Pole Angle"]
+rename_cols_t1 = {k: f"{k}_t1" for k in x_columns}
+
+
 def main(args):
     episodes = args.episodes
     run_no = args.run_num
@@ -90,6 +94,7 @@ def main(args):
     model.model.load_state_dict(torch.load(args.pol_path))
     df = pd.DataFrame()
     for i in tqdm(range(run_no * episodes, (run_no + 1) * episodes)):
+        data = pd.DataFrame()
         done = False
         state = env.reset()
         t = 0
@@ -98,7 +103,7 @@ def main(args):
                 action = env.action_space.sample()
             else:
                 action = model.predict(state).argmax().item()
-            df = df.append(
+            data = data.append(
                 {
                     "episode": i,
                     "t": t,
@@ -112,6 +117,15 @@ def main(args):
             )
             state, reward, done, _ = env.step(action)
             t += 1
+        data_t0 = data.copy().iloc[:-1].reset_index(drop=True)
+        data_t1 = (
+            data.copy()
+            .iloc[1:][x_columns]
+            .rename(columns=rename_cols_t1)
+            .reset_index(drop=True)
+        )
+        df_episode = pd.merge(data_t0, data_t1, left_index=True, right_index=True)
+        df = df.append(df_episode, ignore_index=True)
     if args.rand_pol:
         df.to_csv(
             f"{args.output_dir}/Cartpole-v1-sim-data-run{run_no}-ep{episodes}.csv",
@@ -142,7 +156,7 @@ if __name__ == "__main__":
         "--epsilon",
         help="Epsilon in eps-greedy policy",
         type=float,
-        default=0.2,
+        default=0.3,
     )
     parser.add_argument(
         "--pol_path",
@@ -160,7 +174,7 @@ if __name__ == "__main__":
         "--output_dir",
         help="Directory to save data in",
         type=str,
-        default="/data/ziz/not-backed-up/taufiq/Cartpole/simulator_data",
+        default="/data/ziz/not-backed-up/taufiq/Cartpole/obs-data-epsilon-0.3",
     )
     args = parser.parse_args()
     main(args)
