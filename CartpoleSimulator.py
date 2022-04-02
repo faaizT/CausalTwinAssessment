@@ -11,12 +11,13 @@ from sklearn.utils import resample
 from cartpole_sim.utils.HelperFunctions import *
 from tqdm import tqdm
 import wandb
+from pathlib import Path
 
 
 def main(args):
-    # preprocess_iid_obs_data(args)
-    # combine_data(args)
-    df_partial, sim_data, obs_data_train, quantile_data = load_and_preprocess_data(args)
+    # Make results dir if does not exist
+    Path(args.models_dir).mkdir(parents=True, exist_ok=True)
+    df_partial, sim_data, obs_data_train = load_and_preprocess_data(args)
     obs_test_size = int(len(obs_data_train) / 5)
     obs_train_size = len(obs_data_train) - obs_test_size
     obs_bootstrap = resample(obs_data_train, n_samples=obs_train_size)
@@ -24,12 +25,6 @@ def main(args):
     sim_test_size = int(len(sim_data) / 5)
     sim_train_size = len(sim_data) - sim_test_size
     sim_bootstrap = resample(sim_data, n_samples=sim_train_size)
-
-    quantile_data_test_size = int(len(quantile_data) / 5)
-    quantile_data_train_size = len(quantile_data) - quantile_data_test_size
-    quantile_data_bootstrap = resample(
-        quantile_data, n_samples=quantile_data_train_size
-    )
 
     train_policies(
         df_partial, obs_data_train, obs_bootstrap, args.models_dir, args.model
@@ -80,7 +75,7 @@ if __name__ == "__main__":
         "--models_dir",
         help="Directory to save trained models",
         type=str,
-        default="/data/ziz/not-backed-up/taufiq/Cartpole/models-new-x",
+        default="/data/ziz/not-backed-up/taufiq/Cartpole/dry-run",
     )
     parser.add_argument("--model", help="Model number", type=int, default=0)
     parser.add_argument(
@@ -101,6 +96,12 @@ if __name__ == "__main__":
         help="Std of noise added to fake simulator",
         type=float,
         default=0.005,
+    )
+    parser.add_argument(
+        "--n_obs",
+        help="Number of observational data for estimating Manski's bounds",
+        type=int,
+        default=5000,
     )
 
     args = parser.parse_args()

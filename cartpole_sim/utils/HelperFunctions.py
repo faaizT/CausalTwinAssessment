@@ -63,7 +63,7 @@ def train_policies(data, obs_data_train, obs_bootstrap, models_dir, model):
     policy = PolicyNetwork(input_dim=len(x_columns), output_dim=2)
     optimizer = torch.optim.Adam(policy.parameters(), lr=0.001, weight_decay=0.01)
 
-    for epoch in tqdm(range(100)):
+    for epoch in tqdm(range(1000)):
         for data, label in trainloader:
             prediction = policy(data)  # input x and predict based on x
             loss = loss_func(prediction, label)  # must be (1. nn output, 2. target)
@@ -164,7 +164,7 @@ def train_yminmax(
     ymax_net = Net(n_feature=len(x_columns) + 1, n_hidden=4, n_output=1)
     optimizer = torch.optim.SGD(ymax_net.parameters(), lr=0.005)
 
-    for epoch in tqdm(range(100)):
+    for epoch in tqdm(range(500)):
         for X, Y in trainloader:
             prediction = ymax_net(X)
             loss = loss_func(prediction, Y)
@@ -183,7 +183,7 @@ def train_yminmax(
     ymin_net = Net(n_feature=len(x_columns) + 1, n_hidden=4, n_output=1)
     optimizer = torch.optim.SGD(ymin_net.parameters(), lr=0.005)
 
-    for epoch in tqdm(range(100)):
+    for epoch in tqdm(range(500)):
         for X, Y in trainloader:
             prediction = ymin_net(X)
             loss = loss_func(prediction, Y)
@@ -320,9 +320,9 @@ def load_and_preprocess_data(args):
     logging.info("Preprocessing data")
     df = pd.read_csv(f"{args.files_dir}/Cartpole-v1-obs-data-iid.csv")
     sim_data = pd.read_csv(f"{args.files_dir}/Cartpole-v1-sim-data-iid.csv")
-    quantile_data = pd.read_csv(f"{args.files_dir}/Cartpole-v1-sim-data-iid.csv")
     obs_data_train = pd.read_csv(f"{args.files_dir}/Cartpole-v1-obs-data-iid-train.csv")
-    return df, sim_data, obs_data_train, quantile_data
+    obs_data_train = obs_data_train.iloc[:args.n_obs]
+    return df, sim_data, obs_data_train
 
 
 def transform_data(filename):
