@@ -39,19 +39,23 @@ def normalise(df, data):
     return (df[x_columns] - data[x_columns].mean()) / data[x_columns].std()
 
 
-def train_policies(data, obs_data_train, obs_bootstrap, models_dir, model):
+def train_policies(data, obs_data_train, obs_bootstrap, models_dir, model, use_bootstrap):
+    if use_bootstrap:
+        obs_data = obs_bootstrap
+    else:
+        obs_data = obs_data_train
     training_ids = (
-        obs_bootstrap[["episode", "t"]].apply(lambda x: (x[0], x[1]), axis=1).unique()
+        obs_data[["episode", "t"]].apply(lambda x: (x[0], x[1]), axis=1).unique()
     )
     include_in_testing = (
-        ~obs_data_train[["episode", "t"]]
+        ~data[["episode", "t"]]
         .apply(lambda x: (x[0], x[1]), axis=1)
         .isin(training_ids)
     )
-    test_data = obs_data_train[include_in_testing]
-    X = torch.FloatTensor(normalise(obs_bootstrap, data).values)
+    test_data = data[include_in_testing]
+    X = torch.FloatTensor(normalise(obs_data, data).values)
     Xtest = torch.FloatTensor(normalise(test_data, data).values)
-    Y = torch.tensor(obs_bootstrap["A"].values).to(torch.long)
+    Y = torch.tensor(obs_data["A"].values).to(torch.long)
     Ytest = torch.tensor(test_data["A"].values).to(torch.long)
 
     train = data_utils.TensorDataset(X, Y)
@@ -63,7 +67,7 @@ def train_policies(data, obs_data_train, obs_bootstrap, models_dir, model):
     policy = PolicyNetwork(input_dim=len(x_columns), output_dim=2)
     optimizer = torch.optim.Adam(policy.parameters(), lr=0.001, weight_decay=0.01)
 
-    for epoch in tqdm(range(1000)):
+    for epoch in tqdm(range(100)):
         for data, label in trainloader:
             prediction = policy(data)  # input x and predict based on x
             loss = loss_func(prediction, label)  # must be (1. nn output, 2. target)
@@ -78,25 +82,32 @@ def train_policies(data, obs_data_train, obs_bootstrap, models_dir, model):
                 test_loss /= len(testloader)
                 wandb.log({"epoch": epoch, f"Policy - mdl {model}": test_loss})
             log_policy_accuracy(policy, Xtest, Ytest, epoch, model)
-    torch.save(policy.state_dict(), f"{models_dir}/policy_{model}")
+    if use_bootstrap:
+        torch.save(policy.state_dict(), f"{models_dir}/policy_{model}")
+    else:
+        torch.save(policy.state_dict(), f"{models_dir}/policy_no_bootstrap_{model}")
 
 
-def train_yobs(data, obs_data_train, obs_bootstrap, models_dir, model):
+def train_yobs(data, obs_data_train, obs_bootstrap, models_dir, model, use_bootstrap):
+    if use_bootstrap:
+        obs_data = obs_bootstrap
+    else:
+        obs_data = obs_data_train
     training_ids = (
-        obs_bootstrap[["episode", "t"]].apply(lambda x: (x[0], x[1]), axis=1).unique()
+        obs_data[["episode", "t"]].apply(lambda x: (x[0], x[1]), axis=1).unique()
     )
     include_in_testing = (
-        ~obs_data_train[["episode", "t"]]
+        ~data[["episode", "t"]]
         .apply(lambda x: (x[0], x[1]), axis=1)
         .isin(training_ids)
     )
-    test_data = obs_data_train[include_in_testing]
-    X = torch.FloatTensor(normalise(obs_bootstrap, data).values)
+    test_data = data[include_in_testing]
+    X = torch.FloatTensor(normalise(obs_data, data).values)
     Xtest = torch.FloatTensor(normalise(test_data, data).values)
-    A = torch.FloatTensor(obs_bootstrap["A"].values).to(torch.long)
+    A = torch.FloatTensor(obs_data["A"].values).to(torch.long)
     Atest = torch.FloatTensor(test_data["A"].values).to(torch.long)
     Y = torch.FloatTensor(
-        (obs_bootstrap[f"{outcome}_t1"] - data[outcome].mean()).values
+        (obs_data[f"{outcome}_t1"] - data[outcome].mean()).values
         / data[outcome].std()
     ).unsqueeze(dim=1)
     Ytest = torch.FloatTensor(
@@ -125,30 +136,36 @@ def train_yobs(data, obs_data_train, obs_bootstrap, models_dir, model):
                 test_loss += loss_func(obs_net(Xtest), Ytest)
             test_loss = test_loss / len(testloader)
             wandb.log({"epoch": epoch, f"yobs - {model}": test_loss})
-
-    torch.save(obs_net.state_dict(), f"{models_dir}/yobs_{model}")
+    if use_bootstrap:
+        torch.save(obs_net.state_dict(), f"{models_dir}/yobs_{model}")
+    else:
+        torch.save(obs_net.state_dict(), f"{models_dir}/yobs_no_bootstrap_{model}")
 
 
 def train_yminmax(
-    data, quantile_data, quantile_data_bootstrap, quantile, models_dir, model
+    data, quantile_data, quantile_data_bootstrap, quantile, models_dir, model, use_bootstrap
 ):
+    if use_bootstrap:
+        obs_data = quantile_data_bootstrap
+    else:
+        obs_data = quantile_data
     training_ids = (
-        quantile_data_bootstrap[["episode", "t"]]
+        obs_data[["episode", "t"]]
         .apply(lambda x: (x[0], x[1]), axis=1)
         .unique()
     )
     include_in_testing = (
-        ~quantile_data[["episode", "t"]]
+        ~data[["episode", "t"]]
         .apply(lambda x: (x[0], x[1]), axis=1)
         .isin(training_ids)
     )
-    test_data = quantile_data[include_in_testing]
-    X = torch.FloatTensor(normalise(quantile_data_bootstrap, data).values)
+    test_data = data[include_in_testing]
+    X = torch.FloatTensor(normalise(obs_data, data).values)
     Xtest = torch.FloatTensor(normalise(test_data, data).values)
-    A = torch.FloatTensor(quantile_data_bootstrap["A"].values).to(torch.long)
+    A = torch.FloatTensor(obs_data["A"].values).to(torch.long)
     Atest = torch.FloatTensor(test_data["A"].values).to(torch.long)
     Y = torch.FloatTensor(
-        (quantile_data_bootstrap[f"{outcome}_t1"] - data[outcome].mean()).values
+        (obs_data[f"{outcome}_t1"] - data[outcome].mean()).values
         / data[outcome].std()
     ).unsqueeze(dim=1)
     Ytest = torch.FloatTensor(
@@ -164,7 +181,7 @@ def train_yminmax(
     ymax_net = Net(n_feature=len(x_columns) + 1, n_hidden=4, n_output=1)
     optimizer = torch.optim.SGD(ymax_net.parameters(), lr=0.005)
 
-    for epoch in tqdm(range(500)):
+    for epoch in tqdm(range(100)):
         for X, Y in trainloader:
             prediction = ymax_net(X)
             loss = loss_func(prediction, Y)
@@ -177,13 +194,16 @@ def train_yminmax(
                 test_loss += loss_func(ymax_net(Xtest), Ytest)
             test_loss = test_loss / len(testloader)
             wandb.log({"epoch": epoch, f"ymax - {model}": test_loss})
-    torch.save(ymax_net.state_dict(), f"{models_dir}/ymax_{quantile}_{model}")
+    if use_bootstrap:
+        torch.save(ymax_net.state_dict(), f"{models_dir}/ymax_{quantile}_{model}")
+    else:
+        torch.save(ymax_net.state_dict(), f"{models_dir}/ymax_no_bootstrap_{quantile}_{model}")
 
     loss_func = PinballLoss(quantile=1 - quantile, reduction="mean")
     ymin_net = Net(n_feature=len(x_columns) + 1, n_hidden=4, n_output=1)
     optimizer = torch.optim.SGD(ymin_net.parameters(), lr=0.005)
 
-    for epoch in tqdm(range(500)):
+    for epoch in tqdm(range(100)):
         for X, Y in trainloader:
             prediction = ymin_net(X)
             loss = loss_func(prediction, Y)
@@ -196,8 +216,10 @@ def train_yminmax(
                 test_loss += loss_func(ymin_net(Xtest), Ytest)
             test_loss = test_loss / len(testloader)
             wandb.log({"epoch": epoch, f"ymin - {model}": test_loss})
-    torch.save(ymin_net.state_dict(), f"{models_dir}/ymin_{quantile}_{model}")
-
+    if use_bootstrap:
+        torch.save(ymin_net.state_dict(), f"{models_dir}/ymin_{quantile}_{model}")
+    else:
+        torch.save(ymin_net.state_dict(), f"{models_dir}/ymin_no_bootstrap_{quantile}_{model}")
 
 def train_fake_ysim(data, sim_data, sim_bootstrap, models_dir, model, noise_std):
     training_ids = (

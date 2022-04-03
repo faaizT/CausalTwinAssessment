@@ -12,6 +12,7 @@ from cartpole_sim.utils.HelperFunctions import *
 from tqdm import tqdm
 import wandb
 from pathlib import Path
+from utils import str2bool
 
 
 def main(args):
@@ -20,16 +21,13 @@ def main(args):
     df_partial, sim_data, obs_data_train = load_and_preprocess_data(args)
     obs_test_size = int(len(obs_data_train) / 5)
     obs_train_size = len(obs_data_train) - obs_test_size
+
     obs_bootstrap = resample(obs_data_train, n_samples=obs_train_size)
 
-    sim_test_size = int(len(sim_data) / 5)
-    sim_train_size = len(sim_data) - sim_test_size
-    sim_bootstrap = resample(sim_data, n_samples=sim_train_size)
-
     train_policies(
-        df_partial, obs_data_train, obs_bootstrap, args.models_dir, args.model
+        df_partial, obs_data_train, obs_bootstrap, args.models_dir, args.model, args.use_bootstrap
     )
-    train_yobs(df_partial, obs_data_train, obs_bootstrap, args.models_dir, args.model)
+    train_yobs(df_partial, obs_data_train, obs_bootstrap, args.models_dir, args.model, args.use_bootstrap)
     for quantile in args.quantiles:
         train_yminmax(
             df_partial,
@@ -38,6 +36,7 @@ def main(args):
             quantile,
             args.models_dir,
             args.model,
+            args.use_bootstrap,
         )
     train_ysim(
         df_partial,
@@ -46,22 +45,6 @@ def main(args):
         args.model,
         false_sim=False,
     )
-
-    # train_fake_ysim(
-    #     df_partial, sim_data, sim_bootstrap, args.models_dir, args.model, args.noise_std
-    # )
-
-
-#######################
-# train_ysim(
-#     df_partial,
-#     sim_data,
-#     sim_bootstrap,
-#     args.models_dir,
-#     args.model,
-#     false_sim=True,
-#     perturbation=args.perturbation,
-# )
 
 
 if __name__ == "__main__":
@@ -101,7 +84,13 @@ if __name__ == "__main__":
         "--n_obs",
         help="Number of observational data for estimating Manski's bounds",
         type=int,
-        default=5000,
+        default=50000,
+    )
+    parser.add_argument(
+        "--use_bootstrap",
+        help="Use bootstrap resampling when training the quantities in bounds",
+        type=str2bool,
+        default="True",
     )
 
     args = parser.parse_args()
