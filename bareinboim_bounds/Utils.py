@@ -6,6 +6,7 @@ from sklearn.utils import resample
 import scipy.stats as st
 from scipy.stats import rankdata
 from sklearn.cluster import KMeans
+import scipy
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -124,6 +125,46 @@ def bootstrap_distribution_deprecated(col, gender, age, action, column_v, trajec
             exp_y_sim = sim_train[f'{col}_raw'].mean()
             df = df.append({'Exp_y': exp_y, 'UB': prob*exp_y + (1-prob)*max_y, 'LB': prob*exp_y + (1-prob)*min_y, 'Sim_exp_y': exp_y_sim, 'max_y':max_y, 'min_y': min_y}, ignore_index=True)
         return df
+    return None
+
+
+class Statistic():
+    def __init__(self, obs_data_filtered, sim_data_filtered, col, gender, age, action, x_trajec, i):
+        self.obs_data_filtered = obs_data_filtered
+        self.col = col
+        self.sim_data_filtered = sim_data_filtered
+        self.gender = gender
+        self.age = age
+        self.action = action
+        self.x_trajec = x_trajec
+        self.i = i
+
+    def __call__(self, values):
+        obs_resampled = self.obs_data_filtered.loc[values]
+        probs = compute_probs(obs_resampled, self.x_trajec, self.gender, self.age, self.action)
+        prob = probs[self.i]
+        exp_y = obs_resampled[self.col].mean()
+        exp_y_sim = self.sim_data_filtered[self.col].mean()
+        R_statistic = (exp_y_sim - prob*exp_y)#/(1-prob)
+        return R_statistic
+
+def bootstrap_scipy_wrapper(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=3):
+    sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+    obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+    sim.loc[:,f'x_tuple'] = sim['x_t'].apply(tuple)
+    sim.loc[:,f'actions_tuple'] = sim['actions'].apply(tuple)
+    obs_data.loc[:,f'x_tuple'] = obs_data['x_t'].apply(tuple)
+    obs_data.loc[:,f'actions_tuple'] = obs_data['actions'].apply(tuple)
+    df = pd.DataFrame()
+    max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[-1]) == x_trajec[-1]), col].max()
+    min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[-1]) == x_trajec[-1]), col].min()
+    sim_filtered = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'x_tuple']==tuple(x_trajec)) & (sim['actions_tuple'] == tuple(action))].copy()
+    real_filtered = obs_data[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data[f'x_tuple']==tuple(x_trajec)) & (obs_data['actions_tuple'] == tuple(action))].copy()
+    r_statistic = Statistic(real_filtered, sim_filtered, col, gender, age, action, x_trajec, i)
+    if len(real_filtered) > 1 and len(sim_filtered) > 1:
+        for alpha in np.linspace(0.05, 0.95, 19):
+            ci = scipy.stats.bootstrap((real_filtered.index,), r_statistic, vectorized=False, n_resamples=n_iter, confidence_level=alpha)
+            breakpoint()
     return None
 
 

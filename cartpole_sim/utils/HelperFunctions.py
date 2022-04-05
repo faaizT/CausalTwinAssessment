@@ -179,7 +179,7 @@ def train_yminmax(
 
     loss_func = PinballLoss(quantile=quantile, reduction="mean")
     ymax_net = Net(n_feature=len(x_columns) + 1, n_hidden=4, n_output=1)
-    optimizer = torch.optim.SGD(ymax_net.parameters(), lr=0.005)
+    optimizer = torch.optim.Adam(ymax_net.parameters(), lr=0.001)
 
     for epoch in tqdm(range(100)):
         for X, Y in trainloader:
@@ -201,7 +201,7 @@ def train_yminmax(
 
     loss_func = PinballLoss(quantile=1 - quantile, reduction="mean")
     ymin_net = Net(n_feature=len(x_columns) + 1, n_hidden=4, n_output=1)
-    optimizer = torch.optim.SGD(ymin_net.parameters(), lr=0.005)
+    optimizer = torch.optim.Adam(ymin_net.parameters(), lr=0.001)
 
     for epoch in tqdm(range(100)):
         for X, Y in trainloader:
