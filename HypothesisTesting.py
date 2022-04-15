@@ -8,6 +8,7 @@ import re
 from sklearn.cluster import KMeans
 from scipy.stats import rankdata
 from bareinboim_bounds.Utils import *
+from utils import str2bool
 
 nra = 5
 nr_reps = 1
@@ -292,6 +293,7 @@ def main(args):
             MIMICtable,
             args.sofa_bin,
             args.use_kmeans,
+            args.reverse_percentile,
         )
     else:
         (
@@ -308,6 +310,7 @@ def main(args):
             args.col_bin_num,
             args.hyp_test_dir,
             args.use_kmeans,
+            args.reverse_percentile,
         )
 
     write_to_file(
@@ -356,7 +359,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--hyp_test_dir",
         help="Directory to save hypothesis test info",
-        default="/data/ziz/taufiq/hyp-test-dir-pulse-trajecs-sofa",
+        default="/data/localhost/not-backed-up/taufiq/HypothesisTesting/dry-run",
     )
     parser.add_argument(
         "--saved_dir", help="Location of saved processed data", default=None
@@ -378,6 +381,12 @@ if __name__ == "__main__":
         help="Use k-means to discretize the state space",
         default=True,
         type=bool,
+    )
+    parser.add_argument(
+        "--reverse_percentile",
+        help="Use reverse percentile bootstrap",
+        type=str2bool,
+        default="False",
     )
     args = parser.parse_args()
 
