@@ -45,9 +45,9 @@ def main(args):
     train_policies(MIMICtable_filtered_t0_tr, MIMICtable_filtered_t0, MIMICraw, args.models_dir, args.model)
     if not args.train_policy_only:
         for col_name in cols:
-            train_yobs(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, args.models_dir, col_name, args.model)
+            train_yobs_onehot(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, args.models_dir, col_name, args.model)
             train_yminmax(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, args.models_dir, col_name, args.model)
-            train_ysim(MIMICtable, pulse_data_t0_tr, pulse_data_t1_tr, pulse_data_t0, pulse_data_t1, pulseraw, args.models_dir, col_name, args.model)
+            train_ysim_onehot(MIMICtable, pulse_data_t0_tr, pulse_data_t1_tr, pulse_data_t0, pulse_data_t1, pulseraw, args.models_dir, col_name, args.model)
 
 
 if __name__=="__main__":

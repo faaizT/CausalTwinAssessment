@@ -37,6 +37,21 @@ class Net(torch.nn.Module):
         return x
 
 
+class Net2(torch.nn.Module):
+    def __init__(self, n_feature, n_hidden, n_output):
+        super(Net2, self).__init__()
+        self.hidden = torch.nn.Linear(n_feature, n_hidden)   # hidden layer
+        self.predict1 = torch.nn.Linear(n_hidden, n_hidden)
+        self.predict2 = torch.nn.Linear(n_hidden, n_output)   # output layer
+        self.tanh = torch.nn.Tanh()
+
+    def forward(self, x):
+        x = self.tanh(self.hidden(x))      # activation function for hidden layer
+        x = self.tanh(self.predict1(x))
+        x = self.predict2(x)             # linear output
+        return x
+
+
 class QuantileNet(torch.nn.Module):
     def __init__(self, n_feature, n_hidden, n_output):
         super(QuantileNet, self).__init__()

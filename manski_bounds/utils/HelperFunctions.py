@@ -144,6 +144,52 @@ def train_ysim(MIMICtable, pulse_data_t0_tr, pulse_data_t1_tr, pulse_data_t0, pu
     torch.save(net.state_dict(), f'{models_dir}/ysim_{col_name}_{model}')
 
 
+def train_ysim_onehot(MIMICtable, pulse_data_t0_tr, pulse_data_t1_tr, pulse_data_t0, pulse_data_t1, pulseraw, models_dir, col_name, model):
+    pulseraw_tr = pulse_data_t0_tr[['icustay_id']].merge(pulseraw, on='icustay_id')
+    pulseraw_test = pulseraw[~pulseraw['icustay_id'].isin(pulse_data_t0_tr['icustay_id'])]
+    X = torch.FloatTensor(pulseraw_tr.drop(columns=['icustay_id']).values)
+    Xtestmimic = torch.FloatTensor(pulseraw_test.drop(columns=['icustay_id']).values)
+    A = torch.nn.functional.one_hot(torch.tensor(pulse_data_t0_tr['A'].values).to(torch.long)-1, 25)
+    Atest = torch.nn.functional.one_hot(torch.tensor(pulseraw_test[['icustay_id']].merge(pulse_data_t0, on=['icustay_id'])['A'].values).to(torch.long)-1, 25)
+
+    Y = torch.FloatTensor(pulse_data_t1_tr[col_name].values).unsqueeze(dim=1)
+    Ytest = torch.FloatTensor(pulseraw_test[['icustay_id']].merge(pulse_data_t1, on='icustay_id')[col_name].values).unsqueeze(dim=1)
+    Y = (Y - MIMICtable[col_name].mean())/MIMICtable[col_name].std()
+    Ytest = (Ytest - MIMICtable[col_name].mean())/MIMICtable[col_name].std()
+
+    train = data_utils.TensorDataset(torch.column_stack((X, A)), Y)
+    trainloader = torch.utils.data.DataLoader(train, batch_size=32)
+    test = data_utils.TensorDataset(torch.column_stack((Xtestmimic, Atest)), Ytest)
+    testloader = torch.utils.data.DataLoader(test, batch_size=32)
+
+    net = Net2(n_feature=X.shape[1] + 25, n_hidden=10, n_output=1)
+    if col_name in ['HR', 'paCO2']:
+        optimizer = torch.optim.SGD(net.parameters(), lr=0.001, weight_decay=0.1)
+    else:
+        optimizer = torch.optim.SGD(net.parameters(), lr=0.001, weight_decay=0)
+    loss_func = torch.nn.MSELoss()
+
+    for epoch in tqdm(range(200)):
+        for X, Y in trainloader:
+            prediction = net(X)     # input x and predict based on x
+
+            loss = loss_func(prediction, Y)     # must be (1. nn output, 2. target)
+
+            optimizer.zero_grad()   # clear gradients for next train
+            loss.backward()         # backpropagation, compute gradients
+            optimizer.step()        # apply gradients
+        if (epoch+1) % 10 == 0:
+            with torch.no_grad():
+                test_loss = 0
+                for Xtest, Ytest in testloader:
+                    test_loss += loss_func(net(Xtest), Ytest)
+                test_loss = test_loss/len(testloader)
+                wandb.log({'epoch': epoch, f'ysim {col_name} - {model}': test_loss})
+    
+    torch.save(net.state_dict(), f'{models_dir}/ysim_{col_name}_{model}')
+
+
+
 def train_yminmax(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, models_dir, col_name, model):
     MIMICraw_tr = MIMICtable_filtered_t0_tr[['icustay_id']].merge(MIMICraw, on='icustay_id')
     MIMICraw_test = MIMICraw[~MIMICraw['icustay_id'].isin(MIMICtable_filtered_t0_tr['icustay_id'])]
@@ -292,6 +338,47 @@ def train_yobs(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filter
     
     net = Net(n_feature=X.shape[1]+1, n_hidden=10, n_output=1)
     optimizer = torch.optim.SGD(net.parameters(), lr=0.001, weight_decay=0.1)
+    loss_func = torch.nn.MSELoss()    
+    
+    for epoch in tqdm(range(200)):
+        for X, Y in trainloader:
+            prediction = net(X)     # input x and predict based on x
+
+            loss = loss_func(prediction, Y)     # must be (1. nn output, 2. target)
+
+            optimizer.zero_grad()   # clear gradients for next train
+            loss.backward()         # backpropagation, compute gradients
+            optimizer.step()        # apply gradients
+        if (epoch+1)%10 == 0:
+            with torch.no_grad():
+                test_loss = 0
+                for Xtest, Ytest in testloader:
+                    test_loss += loss_func(net(Xtest), Ytest)
+                test_loss = test_loss/len(testloader)
+                wandb.log({'epoch': epoch, f'yobs {col_name} - {model}': test_loss})
+    
+    torch.save(net.state_dict(), f'{models_dir}/yobs_{col_name}_{model}')
+
+
+def train_yobs_onehot(MIMICtable_filtered_t0, MIMICtable_filtered_t1, MIMICtable_filtered_t0_tr, MIMICtable_filtered_t1_tr, MIMICraw, MIMICtable, models_dir, col_name, model):
+    MIMICraw_tr = MIMICtable_filtered_t0_tr[['icustay_id']].merge(MIMICraw, on='icustay_id')    
+    MIMICraw_test = MIMICraw[~MIMICraw['icustay_id'].isin(MIMICtable_filtered_t0_tr['icustay_id'])]
+    X = torch.FloatTensor(MIMICraw_tr.drop(columns=['icustay_id']).values)
+    Xtestmimic = torch.FloatTensor(MIMICraw_test.drop(columns=['icustay_id']).values)
+    A = torch.nn.functional.one_hot(torch.tensor(MIMICtable_filtered_t0_tr['A'].values).to(torch.long)-1)
+    Atest = torch.nn.functional.one_hot(torch.tensor(MIMICraw_test[['icustay_id']].merge(MIMICtable_filtered_t0, on=['icustay_id'])['A'].values).to(torch.long)-1)
+    Y = torch.FloatTensor(MIMICtable_filtered_t1_tr[col_name].values).unsqueeze(dim=1)
+    Ytest = torch.FloatTensor(MIMICraw_test[['icustay_id']].merge(MIMICtable_filtered_t1, on='icustay_id')[col_name].values).unsqueeze(dim=1)
+    
+    Y = (Y - MIMICtable[col_name].mean())/MIMICtable[col_name].std()
+    Ytest = (Ytest - MIMICtable[col_name].mean())/MIMICtable[col_name].std()
+    train = data_utils.TensorDataset(torch.column_stack((X, A)), Y)
+    trainloader = torch.utils.data.DataLoader(train, batch_size=32)
+    test = data_utils.TensorDataset(torch.column_stack((Xtestmimic, Atest)), Ytest)
+    testloader = torch.utils.data.DataLoader(test, batch_size=32)
+    
+    net = Net(n_feature=X.shape[1]+25, n_hidden=10, n_output=1)
+    optimizer = torch.optim.SGD(net.parameters(), lr=0.001, weight_decay=0.0)
     loss_func = torch.nn.MSELoss()    
     
     for epoch in tqdm(range(200)):
@@ -481,8 +568,8 @@ def preprocess_data(args):
     pulse_data_t2 = MIMICtable_semi_synth[MIMICtable_semi_synth['bloc']==4][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t2, on=['icustay_id'])
     pulse_data_t3 = MIMICtable_semi_synth[MIMICtable_semi_synth['bloc']==5][['gender', 'age', 'Weight_kg', 'icustay_id', 'A']].merge(pulse_data_t3, on=['icustay_id'])
 
-    pulse_data_t0 = pd.concat([pulse_data_t0, pulse_data_t1, pulse_data_t2])
-    pulse_data_t1 = pd.concat([pulse_data_t1, pulse_data_t2, pulse_data_t3])
+    # pulse_data_t0 = pd.concat([pulse_data_t0, pulse_data_t1, pulse_data_t2])
+    # pulse_data_t1 = pd.concat([pulse_data_t1, pulse_data_t2, pulse_data_t3])
 
     if not pulse_data_t0['icustay_id'].equals(pulse_data_t1['icustay_id']):
         raise RuntimeError("Pulse data not contain same icustay_id's at t0 and t1")
