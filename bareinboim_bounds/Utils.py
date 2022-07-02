@@ -44,7 +44,6 @@ def find_elements_containing(series, element):
     return series.apply(lambda x: literal_eval(str(element)) in literal_eval(str(x)))
 
 def xn_in_bn(actions_of_interest, action_taken, x_trajec_of_interest, x_trajec):
-    breakpoint()
     for i in range(len(actions_of_interest)):
         if actions_of_interest[i] != action_taken[i]:
             break
@@ -214,7 +213,6 @@ def bootstrap_distribution_causal_bounds(col, gender, age, action, x_trajec, tra
     obs_data.loc[:,f'x_tuple'] = obs_data['x_t'].apply(tuple)
     obs_data.loc[:,f'actions_tuple'] = obs_data['actions'].apply(tuple)
     df = pd.DataFrame()
-    breakpoint()
     max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[-1]) == x_trajec[-1]), col].max()
     min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[-1]) == x_trajec[-1]), col].min()
     sim_filtered = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'x_tuple']==tuple(x_trajec)) & (sim['actions_tuple'] == tuple(action))].copy()
