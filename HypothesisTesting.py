@@ -373,8 +373,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--load_generated",
         help="Use VAE generated observational data for hypothesis testing",
-        default=False,
-        type=bool,
+        default="False",
+        type=str2bool,
     )
     parser.add_argument(
         "--use_kmeans",

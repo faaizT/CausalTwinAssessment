@@ -43,6 +43,18 @@ def find_elements_starting_with(series, element):
 def find_elements_containing(series, element):
     return series.apply(lambda x: literal_eval(str(element)) in literal_eval(str(x)))
 
+def xn_in_bn(actions_of_interest, action_taken, x_trajec_of_interest, x_trajec):
+    breakpoint()
+    for i in range(len(actions_of_interest)):
+        if actions_of_interest[i] != action_taken[i]:
+            break
+    return x_trajec_of_interest[:i+1] == x_trajec[:i+1]
+
+def filter_dataset_to_get_d0(x_trajec_of_interest, gender, age, obs_data, actions_of_interest):
+    obs_data_filtered = obs_data.loc[find_elements(obs_data['gender'], gender) & find_elements(obs_data['age'], age)]
+    datapoint_in_d0 = obs_data_filtered.apply(lambda x: xn_in_bn(actions_of_interest, x['actions'], x_trajec_of_interest, x['x_t']), axis=1)
+    obs_data_filtered = obs_data_filtered.loc[datapoint_in_d0]
+    return obs_data_filtered
 
 def compute_probs_deprecated(trajec_actions, column):
     for index, row in trajec_actions.iterrows():
@@ -194,6 +206,37 @@ def bootstrap_distribution_percentile(col, gender, age, action, x_trajec, trajec
     return None
 
 
+def bootstrap_distribution_causal_bounds(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=3):
+    sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+    obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+    sim.loc[:,f'x_tuple'] = sim['x_t'].apply(tuple)
+    sim.loc[:,f'actions_tuple'] = sim['actions'].apply(tuple)
+    obs_data.loc[:,f'x_tuple'] = obs_data['x_t'].apply(tuple)
+    obs_data.loc[:,f'actions_tuple'] = obs_data['actions'].apply(tuple)
+    df = pd.DataFrame()
+    breakpoint()
+    max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[-1]) == x_trajec[-1]), col].max()
+    min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[-1]) == x_trajec[-1]), col].min()
+    sim_filtered = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'x_tuple']==tuple(x_trajec)) & (sim['actions_tuple'] == tuple(action))].copy()
+    real_filtered = filter_dataset_to_get_d0(x_trajec, gender, age, obs_data, action)
+    real_filtered.loc[:, 'Y_lb'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action)) + min_y*(real_filtered['actions_tuple'] != tuple(action))
+    real_filtered.loc[:, 'Y_ub'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action)) + max_y*(real_filtered['actions_tuple'] != tuple(action))
+    if len(real_filtered) > 1 and len(sim_filtered) > 1:
+        exp_y_all_data = real_filtered.loc[real_filtered['actions_tuple'] == tuple(action), col].mean()
+        exp_y_sim = sim_filtered[col].mean()
+        ub_all_data = real_filtered['Y_ub'].mean()
+        lb_all_data = real_filtered['Y_lb'].mean()
+        for j in range(n_iter):
+            obs_resampled = resample(real_filtered, n_samples=len(real_filtered))
+            exp_y = obs_resampled.loc[obs_resampled['actions_tuple'] == tuple(action), col].mean()
+            ub = obs_resampled['Y_ub'].mean()
+            lb = obs_resampled['Y_lb'].mean()
+            row_append = pd.DataFrame.from_dict({'Exp_y': [exp_y], 'UB': [ub], 'LB': [lb], 'Sim_exp_y': [exp_y_sim], 'max_y':[max_y], 'min_y': [min_y], 'LB_all_data': [lb_all_data], 'UB_all_data': [ub_all_data],})
+            df = pd.concat([df, row_append], ignore_index=True)
+        return df
+    return None
+
+
 def bootstrap_distribution_(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=3):
     sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
@@ -265,7 +308,7 @@ def rejected_hypotheses_bootstrap_percentile(col, trajec_actions, sim_trajec_act
         p = 1
         M_lower_quantile, M_upper_quantile = [], []
         for t in range(T):
-            df = bootstrap_distribution_percentile(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=t)
+            df = bootstrap_distribution_causal_bounds(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=t)
             if df is not None:
                 if reverse_percentile:
                     p_lb = (2*df['LB_all_data']-df['LB'] <= df['Sim_exp_y']).sum()/len(df)
