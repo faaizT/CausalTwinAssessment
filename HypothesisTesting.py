@@ -294,6 +294,7 @@ def main(args):
             args.sofa_bin,
             args.use_kmeans,
             args.reverse_percentile,
+            args.heoffdings,
         )
     else:
         (
@@ -311,24 +312,25 @@ def main(args):
             args.hyp_test_dir,
             args.use_kmeans,
             args.reverse_percentile,
+            args.heoffdings,
         )
 
     write_to_file(
-        f"{args.hyp_test_dir}/rej_hyp_nums.csv",
+        f"{args.hyp_test_dir}/rej_hyp_nums_hoeff{args.heoffdings}.csv",
         args.col_name,
         num_rej_hyps,
         total_hypotheses,
         args.sofa_bin,
     )
     if args.sofa_bin is None:
-        rej_hyps.to_csv(f"{args.hyp_test_dir}/rej_hyps_{args.col_name}.csv")
-        p_values.to_csv(f"{args.hyp_test_dir}/p_values_{args.col_name}.csv")
+        rej_hyps.to_csv(f"{args.hyp_test_dir}/rej_hyps_{args.col_name}_hoeff{args.heoffdings}.csv")
+        p_values.to_csv(f"{args.hyp_test_dir}/p_values_{args.col_name}_hoeff{args.heoffdings}.csv")
     else:
         rej_hyps.to_csv(
-            f"{args.hyp_test_dir}/rej_hyps_sofabin_{args.sofa_bin}_{args.col_name}.csv"
+            f"{args.hyp_test_dir}/rej_hyps_sofabin_{args.sofa_bin}_{args.col_name}_hoeff{args.heoffdings}.csv"
         )
         p_values.to_csv(
-            f"{args.hyp_test_dir}/p_values_sofabin_{args.sofa_bin}_{args.col_name}.csv"
+            f"{args.hyp_test_dir}/p_values_sofabin_{args.sofa_bin}_{args.col_name}_hoeff{args.heoffdings}.csv"
         )
 
 
@@ -373,6 +375,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--load_generated",
         help="Use VAE generated observational data for hypothesis testing",
+        default="False",
+        type=str2bool,
+    )
+    parser.add_argument(
+        "--heoffdings",
+        help="Use heoffdings inequality for hypothesis testing",
         default="False",
         type=str2bool,
     )
