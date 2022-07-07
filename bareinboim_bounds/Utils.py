@@ -314,7 +314,7 @@ def rejected_hypotheses_bootstrap_percentile(col, trajec_actions, sim_trajec_act
                 else:
                     p_lb = (df['LB'] <= df['Sim_exp_y']).sum()/len(df)
                     p_ub = (df['UB'] >= df['Sim_exp_y']).sum()/len(df)
-                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['actions']], 'x_t': [row['x_t']], 'p_lb': [p_lb], 'p_ub': [p_ub], 'Sim_exp_y': [df['Sim_exp_y'].mean()], 'Exp_y': [df['Exp_y'].mean()], 't': [t]})
+                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['actions']], 'x_t': [row['x_t']], 'p_lb': [p_lb], 'p_ub': [p_ub], 'Y_lb_mean': [df['LB']], 'Y_ub_mean': [df['UB']], 'Sim_exp_y': [df['Sim_exp_y']], 'Exp_y': [df['Exp_y']], 't': [t]})
                 p_values = pd.concat([p_values, row_append], ignore_index=True)
     if len(p_values) > 0:
         rej_hyps = p_values[(p_values['p_lb']<0.05) | (p_values['p_ub']<0.05)].copy()
@@ -349,8 +349,8 @@ def causal_bounds_hoeffdings_p_values(col, gender, age, action, x_trajec, trajec
         lb_all_data = real_filtered['Y_lb'].mean()
         p_lb = 1*(real_filtered['Y_lb'].mean() <= exp_y_sim) + 2*np.exp(-2 * len(real_filtered) * ((lb_all_data - exp_y_sim)/(max_y - min_y))**2)*(real_filtered['Y_lb'].mean() > exp_y_sim)
         p_ub = 1*(real_filtered['Y_ub'].mean() >= exp_y_sim) + 2*np.exp(-2 * len(real_filtered) * ((ub_all_data - exp_y_sim)/(max_y - min_y))**2)*(real_filtered['Y_ub'].mean() < exp_y_sim)
-        return p_lb, p_ub
-    return None, None
+        return p_lb, p_ub, real_filtered['Y_lb'].mean(), real_filtered['Y_ub'].mean(), real_filtered[col].mean(), exp_y_sim
+    return None, None, None, None, None, None
 
 
 def rejected_hypotheses_hoeffdings(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable):
@@ -368,9 +368,9 @@ def rejected_hypotheses_hoeffdings(col, trajec_actions, sim_trajec_actions, sim_
         logging.info(f"On hypothesis {counter}/{total_hypotheses}")
         M_lower_quantile, M_upper_quantile = [], []
         for t in range(T):
-            p_lb, p_ub = causal_bounds_hoeffdings_p_values(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=t)
+            p_lb, p_ub, Y_lb_mean, Y_ub_mean, obs_Y_mean, exp_y_sim = causal_bounds_hoeffdings_p_values(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=t)
             if p_lb is not None:
-                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['actions']], 'x_t': [row['x_t']], 'p_lb': [p_lb], 'p_ub': [p_ub], 't': [t]})
+                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['actions']], 'x_t': [row['x_t']], 'p_lb': [p_lb], 'p_ub': [p_ub], 'Y_lb_mean': [Y_lb_mean], 'Y_ub_mean': [Y_ub_mean], 'Exp_y': [obs_Y_mean], 'Sim_exp_y': [exp_y_sim], 't': [t]})
                 p_values = pd.concat([p_values, row_append], ignore_index=True)
     if len(p_values) > 0:
         rej_hyps = p_values[(p_values['p_lb']<0.05) | (p_values['p_ub']<0.05)].copy()
