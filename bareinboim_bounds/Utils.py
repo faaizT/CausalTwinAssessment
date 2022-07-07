@@ -314,7 +314,7 @@ def rejected_hypotheses_bootstrap_percentile(col, trajec_actions, sim_trajec_act
                 else:
                     p_lb = (df['LB'] <= df['Sim_exp_y']).sum()/len(df)
                     p_ub = (df['UB'] >= df['Sim_exp_y']).sum()/len(df)
-                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['actions']], 'x_t': [row['x_t']], 'p_lb': [p_lb], 'p_ub': [p_ub], 'Y_lb_mean': [df['LB']], 'Y_ub_mean': [df['UB']], 'Sim_exp_y': [df['Sim_exp_y']], 'Exp_y': [df['Exp_y']], 't': [t]})
+                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['actions']], 'x_t': [row['x_t']], 'p_lb': [p_lb], 'p_ub': [p_ub], 'Y_lb_mean': [list(df['LB'])], 'Y_ub_mean': [list(df['UB'])], 'Sim_exp_y': [list(df['Sim_exp_y'])], 'Exp_y': [list(df['Exp_y'])], 't': [t]})
                 p_values = pd.concat([p_values, row_append], ignore_index=True)
     if len(p_values) > 0:
         rej_hyps = p_values[(p_values['p_lb']<0.05) | (p_values['p_ub']<0.05)].copy()
