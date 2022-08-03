@@ -364,7 +364,9 @@ if __name__ == "__main__":
         default="/data/localhost/not-backed-up/taufiq/HypothesisTesting/dry-run",
     )
     parser.add_argument(
-        "--saved_dir", help="Location of saved processed data", default=None
+        "--saved_dir", 
+        help="Location of saved processed data", 
+        default="/data/ziz/taufiq/hyp_test_dir_MIMIC_combined",
     )
     parser.add_argument(
         "--sofa_bin",
