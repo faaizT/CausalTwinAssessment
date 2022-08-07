@@ -284,6 +284,7 @@ def main(args):
             p_values,
             rej_hyps,
             total_hypotheses,
+            pruned_hypotheses,
             trajec_actions,
             sim_trajec_actions,
         ) = do_hypothesis_testing_saved(
@@ -295,6 +296,8 @@ def main(args):
             args.use_kmeans,
             args.reverse_percentile,
             args.heoffdings,
+            args.pruning,
+            args.discretised_outcome,
         )
     else:
         (
@@ -302,6 +305,7 @@ def main(args):
             p_values,
             rej_hyps,
             total_hypotheses,
+            pruned_hypotheses,
             trajec_actions,
             sim_trajec_actions,
         ) = do_hypothesis_testing(
@@ -313,6 +317,8 @@ def main(args):
             args.use_kmeans,
             args.reverse_percentile,
             args.heoffdings,
+            args.pruning,
+            args.discretised_outcome,
         )
 
     write_to_file(
@@ -332,6 +338,7 @@ def main(args):
         p_values.to_csv(
             f"{args.hyp_test_dir}/p_values_sofabin_{args.sofa_bin}_{args.col_name}_hoeff{args.heoffdings}.csv"
         )
+    pruned_hypotheses.to_csv(f"{args.hyp_test_dir}/pruned_hyps_{args.col_name}_hoeff{args.heoffdings}.csv")
 
 
 if __name__ == "__main__":
@@ -366,7 +373,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--saved_dir", 
         help="Location of saved processed data", 
-        default="/data/ziz/taufiq/hyp_test_dir_MIMIC_combined",
+        default=None,
     )
     parser.add_argument(
         "--sofa_bin",
@@ -389,12 +396,24 @@ if __name__ == "__main__":
     parser.add_argument(
         "--use_kmeans",
         help="Use k-means to discretize the state space",
-        default=True,
-        type=bool,
+        default="True",
+        type=str2bool,
     )
     parser.add_argument(
         "--reverse_percentile",
         help="Use reverse percentile bootstrap",
+        type=str2bool,
+        default="False",
+    )
+    parser.add_argument(
+        "--pruning",
+        help="Use pruning with Hoeffding",
+        type=str2bool,
+        default="False",
+    )
+    parser.add_argument(
+        "--discretised_outcome",
+        help="Run tests on discretised outcomes",
         type=str2bool,
         default="False",
     )

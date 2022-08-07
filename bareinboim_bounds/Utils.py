@@ -235,7 +235,7 @@ def bootstrap_distribution_causal_bounds(col, gender, age, action, x_trajec, tra
     return None
 
 
-def bootstrap_distribution_causal_bounds_with_qtwin(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=3):
+def bootstrap_distribution_causal_bounds_with_qtwin(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, discretised_outcome, n_iter=100, i=3):
     sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     sim.loc[:,f'x_tuple'] = sim['x_t'].apply(lambda x: tuple(x[:i]))
@@ -243,13 +243,20 @@ def bootstrap_distribution_causal_bounds_with_qtwin(col, gender, age, action, x_
     obs_data.loc[:,f'x_tuple'] = obs_data['x_t'].apply(lambda x: tuple(x[:i]))
     obs_data.loc[:,f'actions_tuple'] = obs_data['actions'].apply(lambda x: tuple(x[:i]))
     df = pd.DataFrame()
-    max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[i]) == x_trajec[i]), col].max()
-    min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[i]) == x_trajec[i]), col].min()
-    sim_filtered = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'x_tuple']==tuple(x_trajec[:i])) & (sim['actions_tuple'] == tuple(action[:i]))].copy()
+    if discretised_outcome:
+        max_y, min_y = 1, 0
+    else:
+        max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: tuple(x[:i])) == tuple(x_trajec[:i])) & (obs_data['actions'].apply(lambda x: tuple(x[:i])) == tuple(action[:i])), col].max()
+        min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: tuple(x[:i])) == tuple(x_trajec[:i])) & (obs_data['actions'].apply(lambda x: tuple(x[:i])) == tuple(action[:i])), col].min()
+        # max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[i]) == x_trajec[i]), col].max()
+        # min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[i]) == x_trajec[i]), col].min()
+    sim_filtered_before_pruning = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'x_tuple']==tuple(x_trajec[:i])) & (sim['actions_tuple'] == tuple(action[:i]))].copy()
+    sim_filtered = sim_filtered_before_pruning
+    sim_filtered[col] = sim_filtered[col].clip(min_y, max_y)
     real_filtered = filter_dataset_to_get_d0(x_trajec, gender, age, obs_data, action, i)
     real_filtered.loc[:, 'Y_lb'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + min_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
     real_filtered.loc[:, 'Y_ub'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + max_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
-    if len(real_filtered) > 1 and len(sim_filtered) > 1:
+    if len(real_filtered) > 10 and len(sim_filtered) > 10:
         exp_y_all_data = real_filtered.loc[real_filtered['actions_tuple'] == tuple(action[:i]), col].mean()
         exp_y_sim_all_data = sim_filtered[col].mean()
         ub_all_data = real_filtered['Y_ub'].mean()
@@ -263,8 +270,8 @@ def bootstrap_distribution_causal_bounds_with_qtwin(col, gender, age, action, x_
             exp_y_sim = sim_resampled[col].mean()
             row_append = pd.DataFrame.from_dict({'Exp_y': [exp_y], 'UB': [ub], 'LB': [lb], 'Sim_exp_y_all_data': [exp_y_sim_all_data], 'Sim_exp_y': [exp_y_sim], 'max_y':[max_y], 'min_y': [min_y], 'LB_all_data': [lb_all_data], 'UB_all_data': [ub_all_data],})
             df = pd.concat([df, row_append], ignore_index=True)
-        return df
-    return None
+        return df, len(real_filtered), len(sim_filtered_before_pruning), len(sim_filtered)
+    return None, len(real_filtered), len(sim_filtered_before_pruning), len(sim_filtered)
 
 
 
@@ -382,44 +389,71 @@ def rejected_hypotheses_bootstrap_percentile(col, trajec_actions, sim_trajec_act
     return len(rej_hyps), p_values, rej_hyps, len(p_values)
 
 
-def rejected_hypotheses_bootstrap_percentile_with_qtwin(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile):
+def rejected_hypotheses_bootstrap_percentile_with_qtwin(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile, discretised_outcome):
     logging.info("Using bootstrapping on Qtwin as well")
     T = 4
-    state_actions = trajec_actions[['gender', 'age', 'actions', 'x_t']].copy()
-    state_actions.loc[:,'a'] = state_actions['actions'].apply(tuple)
-    state_actions.loc[:,'s'] = state_actions['x_t'].apply(tuple)
-    state_actions = state_actions.groupby(by=['gender', 'age', 'a', 's']).filter(lambda x: len(x) >= 10).drop_duplicates(['gender', 'age', 'a', 's'])
-    total_hypotheses = len(state_actions)
     p_values = pd.DataFrame()
-    counter = 0
-    logging.info(f"Using Reverse Percentile Bootstrap: {reverse_percentile}")
-    for index, row in state_actions.iterrows():
-        counter += 1
-        logging.info(f"On hypothesis {counter}/{total_hypotheses}")
-        p = 1
-        M_lower_quantile, M_upper_quantile = [], []
-        for t in range(T):
-            df = bootstrap_distribution_causal_bounds_with_qtwin(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=t)
-            
+    pruned_hypotheses = pd.DataFrame()
+    for t in range(T):
+        state_actions = sim_trajec_actions[['gender', 'age', 'actions', 'x_t']].copy()
+        state_actions.loc[:,'a'] = state_actions['actions'].apply(lambda x: tuple(x[:t]))
+        state_actions.loc[:,'s'] = state_actions['x_t'].apply(lambda x: tuple(x[:t]))
+        state_actions = state_actions.groupby(by=['gender', 'age', 'a', 's']).filter(lambda x: len(x) >= 10).drop_duplicates(['gender', 'age', 'a', 's'])
+        total_hypotheses = len(state_actions)
+        counter = 0
+        logging.info(f"Using Reverse Percentile Bootstrap: {reverse_percentile}")
+        for index, row in state_actions.iterrows():
+            counter += 1
+            logging.info(f"On hypothesis {counter}/{total_hypotheses} for t={t}")
+            p = 1
+            M_lower_quantile, M_upper_quantile = [], []
+            df, n_obs, n_sim_before_pruning, n_sim = bootstrap_distribution_causal_bounds_with_qtwin(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, discretised_outcome, n_iter=100, i=t)
             if df is not None:
                 p_lb, p_ub = compute_p_values(df, reverse_percentile)
-                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['actions']], 'x_t': [row['x_t']], 'p_lb': [p_lb], 'p_ub': [p_ub], 'Y_lb_mean': [list(df['LB'])], 'Y_ub_mean': [list(df['UB'])], 'Sim_exp_y': [list(df['Sim_exp_y'])], 'Exp_y': [list(df['Exp_y'])], 't': [t]})
+                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['a']], 'x_t': [row['s']], 'p_lb': [p_lb], 'p_ub': [p_ub], 'Y_lb_mean': [list(df['LB'])], 'Y_ub_mean': [list(df['UB'])], 'Sim_exp_y': [list(df['Sim_exp_y'])], 'Exp_y': [list(df['Exp_y'])], 't': [t], 'n_obs': [n_obs], 'n_sim_before_pruning': [n_sim_before_pruning], 'n_sim': [n_sim]})
                 p_values = pd.concat([p_values, row_append], ignore_index=True)
+            else:
+                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['a']], 'x_t': [row['s']], 't': [t], 'n_obs': [n_obs], 'n_sim_before_pruning': [n_sim_before_pruning], 'n_sim': [n_sim]})
+                pruned_hypotheses = pd.concat([pruned_hypotheses, row_append], ignore_index=True)
     if len(p_values) > 0:
         rej_hyps = p_values[(p_values['p_lb']<0.05/4) | (p_values['p_ub']<0.05/4)].copy()
-        for index, row in rej_hyps.iterrows():
-            rej_hyps.loc[index, 'n_real'] = (find_elements(trajec_actions['gender'], row['gender']) & find_elements(trajec_actions['age'], row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions['x_t'], row['x_t'])).sum()
-            rej_hyps.loc[index, 'n_sim'] = (find_elements(sim_trajec_actions['gender'], row['gender']) & find_elements(sim_trajec_actions['age'], row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions['x_t'], row['x_t'])).sum()
-        for index, row in p_values.iterrows():
-            p_values.loc[index, 'n_real'] = ((trajec_actions['gender'] == row['gender']) & (trajec_actions['age'] == row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions['x_t'], row['x_t'])).sum()
-            p_values.loc[index, 'n_sim'] = ((sim_trajec_actions['gender'] == row['gender']) & (sim_trajec_actions['age'] == row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions['x_t'], row['x_t'])).sum()
     else:
         rej_hyps = pd.DataFrame()
-    return len(rej_hyps), p_values, rej_hyps, len(p_values)
+    return len(rej_hyps), p_values, rej_hyps, len(p_values), pruned_hypotheses
 
 
+def causal_bounds_hoeffdings_p_values(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, pruning, discretised_outcome, n_iter=100, i=3):
+    sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+    obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+    sim.loc[:,f'x_tuple'] = sim['x_t'].apply(lambda x: tuple(x[:i]))
+    sim.loc[:,f'actions_tuple'] = sim['actions'].apply(lambda x: tuple(x[:i]))
+    obs_data.loc[:,f'x_tuple'] = obs_data['x_t'].apply(lambda x: tuple(x[:i]))
+    obs_data.loc[:,f'actions_tuple'] = obs_data['actions'].apply(lambda x: tuple(x[:i]))
+    df = pd.DataFrame()
+    if discretised_outcome:
+        max_y, min_y = 1, 0
+    else:
+        max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: tuple(x[:i])) == tuple(x_trajec[:i])) & (obs_data['actions'].apply(lambda x: tuple(x[:i])) == tuple(action[:i])), col].max()
+        min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: tuple(x[:i])) == tuple(x_trajec[:i])) & (obs_data['actions'].apply(lambda x: tuple(x[:i])) == tuple(action[:i])), col].min()
+    sim_filtered_before_pruning = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'x_tuple']==tuple(x_trajec[:i])) & (sim['actions_tuple'] == tuple(action[:i]))].copy()
+    if pruning:
+        sim_filtered = sim_filtered_before_pruning[sim_filtered_before_pruning[col].between(min_y, max_y)]
+    else:
+        sim_filtered = sim_filtered_before_pruning
+    real_filtered = filter_dataset_to_get_d0(x_trajec, gender, age, obs_data, action, i)
+    real_filtered.loc[:, 'Y_lb'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + min_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
+    real_filtered.loc[:, 'Y_ub'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + max_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
+    if len(real_filtered) > 10 and len(sim_filtered) > 10:
+        exp_y_sim = sim_filtered[col].clip(min_y, max_y).mean()
+        ub_all_data = real_filtered['Y_ub'].mean()
+        lb_all_data = real_filtered['Y_lb'].mean()
+        p_lb = 1*(real_filtered['Y_lb'].mean() <= exp_y_sim) + 4*np.exp(-2 * (1/(1/np.sqrt(len(real_filtered)) + 1/np.sqrt(len(sim_filtered))) * (lb_all_data - exp_y_sim)/(max_y - min_y))**2)*(real_filtered['Y_lb'].mean() > exp_y_sim)
+        p_ub = 1*(real_filtered['Y_ub'].mean() >= exp_y_sim) + 4*np.exp(-2 * (1/(1/np.sqrt(len(real_filtered)) + 1/np.sqrt(len(sim_filtered))) * (exp_y_sim - ub_all_data)/(max_y - min_y))**2)*(real_filtered['Y_ub'].mean() < exp_y_sim)
+        return p_lb, p_ub, real_filtered['Y_lb'].mean(), real_filtered['Y_ub'].mean(), real_filtered[col].mean(), exp_y_sim, len(real_filtered), (real_filtered['actions_tuple'] == tuple(action[:i])).sum(), min_y, max_y, len(sim_filtered_before_pruning), sim_filtered_before_pruning[col].between(min_y, max_y).sum()
+    return None, None, None, None, None, None, len(real_filtered), (real_filtered['actions_tuple'] == tuple(action[:i])).sum(), min_y, max_y, len(sim_filtered_before_pruning), sim_filtered_before_pruning[col].between(min_y, max_y).sum()
 
-def causal_bounds_hoeffdings_p_values(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=3):
+
+def causal_bounds_hoeffdings_p_values_without_qtwin_est(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=3):
     sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     sim.loc[:,f'x_tuple'] = sim['x_t'].apply(lambda x: tuple(x[:i]))
@@ -443,36 +477,34 @@ def causal_bounds_hoeffdings_p_values(col, gender, age, action, x_trajec, trajec
     return None, None, None, None, None, None
 
 
-def rejected_hypotheses_hoeffdings(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable):
+def rejected_hypotheses_hoeffdings(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, pruning, discretised_outcome):
     T = 4
-    state_actions = trajec_actions[['gender', 'age', 'actions', 'x_t']].copy()
-    state_actions.loc[:,'a'] = state_actions['actions'].apply(tuple)
-    state_actions.loc[:,'s'] = state_actions['x_t'].apply(tuple)
-    state_actions = state_actions.groupby(by=['gender', 'age', 'a', 's']).filter(lambda x: len(x) >= 10).drop_duplicates(['gender', 'age', 'a', 's'])
-    total_hypotheses = len(state_actions)
     p_values = pd.DataFrame()
-    counter = 0
-    logging.info(f"Using Hoeffdings")
-    for index, row in state_actions.iterrows():
-        counter += 1
-        logging.info(f"On hypothesis {counter}/{total_hypotheses}")
-        M_lower_quantile, M_upper_quantile = [], []
-        for t in range(T):
-            p_lb, p_ub, Y_lb_mean, Y_ub_mean, obs_Y_mean, exp_y_sim = causal_bounds_hoeffdings_p_values(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, n_iter=100, i=t)
+    pruned_hypotheses = pd.DataFrame()
+    for t in range(T):
+        state_actions = sim_trajec_actions[['gender', 'age', 'actions', 'x_t']].copy()
+        state_actions.loc[:,'a'] = state_actions['actions'].apply(lambda x: tuple(x[:t]))
+        state_actions.loc[:,'s'] = state_actions['x_t'].apply(lambda x: tuple(x[:t]))
+        state_actions = state_actions.groupby(by=['gender', 'age', 'a', 's']).filter(lambda x: len(x) >= 10).drop_duplicates(['gender', 'age', 'a', 's'])
+        total_hypotheses = len(state_actions)
+        counter = 0
+        logging.info(f"Using Hoeffdings")
+        for index, row in state_actions.iterrows():
+            counter += 1
+            logging.info(f"On hypothesis {counter}/{total_hypotheses} for t={t}")
+            M_lower_quantile, M_upper_quantile = [], []
+            p_lb, p_ub, Y_lb_mean, Y_ub_mean, obs_Y_mean, exp_y_sim, n_d0, n_d0_with_right_actions, y_lo, y_up, n_sim, n_sim_w_pruning = causal_bounds_hoeffdings_p_values(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, pruning, discretised_outcome, n_iter=100, i=t)
             if p_lb is not None:
-                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['actions']], 'x_t': [row['x_t']], 'p_lb': [p_lb], 'p_ub': [p_ub], 'Y_lb_mean': [Y_lb_mean], 'Y_ub_mean': [Y_ub_mean], 'Exp_y': [obs_Y_mean], 'Sim_exp_y': [exp_y_sim], 't': [t]})
+                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['a']], 'x_t': [row['s']], 'p_lb': [p_lb], 'p_ub': [p_ub], 'Y_lb_mean': [Y_lb_mean], 'Y_ub_mean': [Y_ub_mean], 'Exp_y': [obs_Y_mean], 'Sim_exp_y': [exp_y_sim], 't': [t], 'n_obs': [n_d0], 'n_obs_with_actions_of_interest': [n_d0_with_right_actions], 'y_lo': [y_lo], 'y_up': [y_up], 'n_sim': [n_sim], 'n_sim_w_pruning': [n_sim_w_pruning]})
                 p_values = pd.concat([p_values, row_append], ignore_index=True)
+            else:
+                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['a']], 'x_t': [row['s']], 't': [t], 'n_obs': [n_d0], 'n_obs_with_actions_of_interest': [n_d0_with_right_actions], 'y_lo': [y_lo], 'y_up': [y_up], 'n_sim': [n_sim], 'n_sim_w_pruning': [n_sim_w_pruning]})
+                pruned_hypotheses = pd.concat([pruned_hypotheses, row_append], ignore_index=True)
     if len(p_values) > 0:
         rej_hyps = p_values[(p_values['p_lb']<0.05) | (p_values['p_ub']<0.05)].copy()
-        for index, row in rej_hyps.iterrows():
-            rej_hyps.loc[index, 'n_real'] = (find_elements(trajec_actions['gender'], row['gender']) & find_elements(trajec_actions['age'], row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions['x_t'], row['x_t'])).sum()
-            rej_hyps.loc[index, 'n_sim'] = (find_elements(sim_trajec_actions['gender'], row['gender']) & find_elements(sim_trajec_actions['age'], row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions['x_t'], row['x_t'])).sum()
-        for index, row in p_values.iterrows():
-            p_values.loc[index, 'n_real'] = ((trajec_actions['gender'] == row['gender']) & (trajec_actions['age'] == row['age']) & find_elements(trajec_actions['actions'], row['actions']) & find_elements(trajec_actions['x_t'], row['x_t'])).sum()
-            p_values.loc[index, 'n_sim'] = ((sim_trajec_actions['gender'] == row['gender']) & (sim_trajec_actions['age'] == row['age']) & find_elements(sim_trajec_actions['actions'], row['actions']) & find_elements(sim_trajec_actions['x_t'], row['x_t'])).sum()
     else:
         rej_hyps = pd.DataFrame()
-    return len(rej_hyps), p_values, rej_hyps, len(p_values)
+    return len(rej_hyps), p_values, rej_hyps, len(p_values), pruned_hypotheses
 
 
 def rejected_hypotheses_bootstrap_trajectories(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable):
@@ -520,21 +552,24 @@ def get_col_bin(col_v, col_name, col_bins_num, MIMICtable, col_bins_obs):
 
 x_columns = ['Weight_kg', 'paCO2', 'paO2', 'HCO3', 'Arterial_pH', 'Calcium', 'Chloride', 'DiaBP', 'Glucose', 'MeanBP', 'Potassium', 'RR', 'Temp_C', 'Sodium', 'SysBP', 'HR']
 
-def get_col_bins(MIMICtable, sim_data, use_kmeans, col_bins_num):
+def get_col_bins(MIMICtable, sim_data, use_kmeans, col_bins_num, column):
     if use_kmeans:
         kmeans = KMeans(n_clusters=col_bins_num, random_state=0).fit((MIMICtable[x_columns]-MIMICtable[x_columns].mean())/MIMICtable[x_columns].std())
         col_bins_obs = kmeans.labels_
         col_bins_sim = kmeans.predict((sim_data[x_columns] - MIMICtable[x_columns].mean())/MIMICtable[x_columns].std())
     else:
-        col_ranked = rankdata(pd.concat([MIMICtable[column], sim_data[column]]))/len(MIMICtable)
-        col_bins = np.floor((col_ranked + 1/(col_bins_num + 0.0000001))*col_bins_num)
-        col_bins_obs = col_bins[:len(MIMICtable)]
-        col_bins_sim = col_bins[len(MIMICtable):]
+        bins, labels = [0], [0]
+        for i in range(1, col_bins_num):
+            bins.append(MIMICtable[column].quantile(i/col_bins_num))
+            labels.append(i)
+        bins.append(max(MIMICtable[column].max(), sim_data[column].max()))
+        col_bins_obs = pd.cut(MIMICtable[column], bins=bins, labels=labels).astype(float)
+        col_bins_sim = pd.cut(sim_data[column], bins=bins, labels=labels).astype(float)
     return col_bins_obs, col_bins_sim
 
-def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_dir, use_kmeans, reverse_percentile, hoeffdings_test):
+def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_dir, use_kmeans, reverse_percentile, hoeffdings_test, pruning, discretised_outcome):
     logging.info("doing hypothesis testing")
-    col_bins_obs, col_bins_sim = get_col_bins(MIMICtable, sim_data, use_kmeans, col_bins_num)
+    col_bins_obs, col_bins_sim = get_col_bins(MIMICtable, sim_data, use_kmeans, col_bins_num, column)
     logging.info("Extracted column bins for simulator data")
 
     trajectories = pd.DataFrame()
@@ -556,6 +591,10 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_d
     trajec_actions = get_trajec_actions_df(trajectories)
     sim_trajec_actions = get_trajec_actions_df(sim_trajecs)
     logging.info(f'trajec_actions length: {len(trajec_actions)}')
+    if discretised_outcome:
+        MIMICtable[column] = col_bins_obs
+        sim_data[column] = col_bins_sim
+
     icustayids = MIMICtable['icustay_id'].unique()
     logging.info(f'icustayids length: {len(icustayids)}')
     trajec_actions.loc[:,'icustay_id'] = icustayids
@@ -569,12 +608,12 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_d
 
     if hoeffdings_test:
         logging.info("Using hoeffdings for hypothesis testing")
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses = rejected_hypotheses_hoeffdings(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_hoeffdings(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, pruning, discretised_outcome)
     else:
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses = rejected_hypotheses_bootstrap_percentile_with_qtwin(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile)
-    return num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_bootstrap_percentile_with_qtwin(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile, discretised_outcome)
+    return num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses, trajec_actions, sim_trajec_actions
 
-def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bin, use_kmeans, reverse_percentile, hoeffdings_test):
+def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bin, use_kmeans, reverse_percentile, hoeffdings_test, pruning, discretised_outcome):
     if use_kmeans:
         trajec_actions = pd.read_csv(f"{directory}/trajec_actions.csv", converters={'actions': eval, 'x_t': eval})
         sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions.csv", converters={'actions': eval, 'x_t': eval})
@@ -598,9 +637,12 @@ def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bi
     MIMICtable = MIMICtable[MIMICtable['icustay_id'].isin(trajec_actions['icustay_id'])]
     logging.info(f'Filtered trajectory length: {len(trajec_actions)}')
 
+    if discretised_outcome:
+        raise NotImplementedError("discretised outcome not implemented for saved hypotheses")
+
     if hoeffdings_test:
         logging.info("Using hoeffdings for hypothesis testing")
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses = rejected_hypotheses_hoeffdings(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_hoeffdings(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, pruning, discretised_outcome)
     else:
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses = rejected_hypotheses_bootstrap_percentile_with_qtwin(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile)
-    return num_rej_hyps, p_values, rej_hyps, total_hypotheses, trajec_actions, sim_trajec_actions
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_bootstrap_percentile_with_qtwin(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile, discretised_outcome)
+    return num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses, trajec_actions, sim_trajec_actions
