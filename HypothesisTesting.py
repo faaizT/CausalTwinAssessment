@@ -271,9 +271,10 @@ def main(args):
     else:
         MIMICtable_generated = MIMICtable.copy()
     if args.sim_name == "pulse":
-        sim_data = load_pulse_data(
-            args.sim_path, MIMICtable_generated, load_generated=True
-        )
+        if args.load_generated_sim:
+            sim_data = pd.read_csv("/data/ziz/taufiq/export-dir/pulse-data-processed-augmented.csv")
+        else:
+            sim_data = pd.read_csv("/data/ziz/taufiq/export-dir/pulse-data-processed-notaugmented.csv")
     else:
         sim_data = load_biogears_data(args.sim_path, MIMICtable)
 
@@ -384,6 +385,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--load_generated",
         help="Use VAE generated observational data for hypothesis testing",
+        default="False",
+        type=str2bool,
+    )
+    parser.add_argument(
+        "--load_generated_sim",
+        help="Use sim data generated using approximate x0 for hypothesis testing",
         default="False",
         type=str2bool,
     )

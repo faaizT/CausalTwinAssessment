@@ -243,17 +243,19 @@ def bootstrap_distribution_causal_bounds_with_qtwin(col, gender, age, action, x_
     obs_data.loc[:,f'x_tuple'] = obs_data['x_t'].apply(lambda x: tuple(x[:i]))
     obs_data.loc[:,f'actions_tuple'] = obs_data['actions'].apply(lambda x: tuple(x[:i]))
     df = pd.DataFrame()
+    real_filtered = filter_dataset_to_get_d0(x_trajec, gender, age, obs_data, action, i)
+    withheld_real_data = real_filtered.sample(frac=0.05, replace=False, random_state=1)
+    real_filtered = real_filtered.drop(withheld_real_data.index)
     if discretised_outcome:
         max_y, min_y = 1, 0
     else:
-        max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: tuple(x[:i])) == tuple(x_trajec[:i])) & (obs_data['actions'].apply(lambda x: tuple(x[:i])) == tuple(action[:i])), col].max()
-        min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: tuple(x[:i])) == tuple(x_trajec[:i])) & (obs_data['actions'].apply(lambda x: tuple(x[:i])) == tuple(action[:i])), col].min()
-        # max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[i]) == x_trajec[i]), col].max()
-        # min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: x[i]) == x_trajec[i]), col].min()
+        max_y, min_y = round(withheld_real_data[col].quantile(0.80), 2), round(withheld_real_data[col].quantile(0.20), 2)
+    if max_y - min_y < 1e-6:
+        max_y = min_y + 1
     sim_filtered_before_pruning = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'x_tuple']==tuple(x_trajec[:i])) & (sim['actions_tuple'] == tuple(action[:i]))].copy()
     sim_filtered = sim_filtered_before_pruning
     sim_filtered[col] = sim_filtered[col].clip(min_y, max_y)
-    real_filtered = filter_dataset_to_get_d0(x_trajec, gender, age, obs_data, action, i)
+    real_filtered[col] = real_filtered[col].clip(min_y, max_y)
     real_filtered.loc[:, 'Y_lb'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + min_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
     real_filtered.loc[:, 'Y_ub'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + max_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
     if len(real_filtered) > 10 and len(sim_filtered) > 10:
@@ -430,17 +432,22 @@ def causal_bounds_hoeffdings_p_values(col, gender, age, action, x_trajec, trajec
     obs_data.loc[:,f'x_tuple'] = obs_data['x_t'].apply(lambda x: tuple(x[:i]))
     obs_data.loc[:,f'actions_tuple'] = obs_data['actions'].apply(lambda x: tuple(x[:i]))
     df = pd.DataFrame()
+    real_filtered = filter_dataset_to_get_d0(x_trajec, gender, age, obs_data, action, i)
+    withheld_real_data = real_filtered.sample(frac=0.05, replace=False, random_state=1)
+    real_filtered = real_filtered.drop(withheld_real_data.index)
     if discretised_outcome:
         max_y, min_y = 1, 0
     else:
-        max_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: tuple(x[:i])) == tuple(x_trajec[:i])) & (obs_data['actions'].apply(lambda x: tuple(x[:i])) == tuple(action[:i])), col].max()
-        min_y = obs_data.loc[(obs_data['gender'] == gender) & (obs_data['age'] == age) & (obs_data['x_t'].apply(lambda x: tuple(x[:i])) == tuple(x_trajec[:i])) & (obs_data['actions'].apply(lambda x: tuple(x[:i])) == tuple(action[:i])), col].min()
+        max_y, min_y = round(withheld_real_data[col].quantile(0.80), 2), round(withheld_real_data[col].quantile(0.20), 2)
+    if max_y - min_y < 1e-6:
+        max_y = min_y + 1
     sim_filtered_before_pruning = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'x_tuple']==tuple(x_trajec[:i])) & (sim['actions_tuple'] == tuple(action[:i]))].copy()
     if pruning:
         sim_filtered = sim_filtered_before_pruning[sim_filtered_before_pruning[col].between(min_y, max_y)]
     else:
         sim_filtered = sim_filtered_before_pruning
-    real_filtered = filter_dataset_to_get_d0(x_trajec, gender, age, obs_data, action, i)
+    sim_filtered[col] = sim_filtered[col].clip(min_y, max_y)
+    real_filtered[col] = real_filtered[col].clip(min_y, max_y)
     real_filtered.loc[:, 'Y_lb'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + min_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
     real_filtered.loc[:, 'Y_ub'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + max_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
     if len(real_filtered) > 10 and len(sim_filtered) > 10:
