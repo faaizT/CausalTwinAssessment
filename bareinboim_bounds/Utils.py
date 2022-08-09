@@ -258,6 +258,8 @@ def bootstrap_distribution_causal_bounds_with_qtwin(col, gender, age, action, x_
     real_filtered[col] = real_filtered[col].clip(min_y, max_y)
     real_filtered.loc[:, 'Y_lb'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + min_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
     real_filtered.loc[:, 'Y_ub'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + max_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
+    yobs_values = list(real_filtered.loc[real_filtered['actions_tuple'] == tuple(action[:i]), col].values)
+    ysim_values = list(sim_filtered[col].values)
     if len(real_filtered) > 10 and len(sim_filtered) > 10:
         exp_y_all_data = real_filtered.loc[real_filtered['actions_tuple'] == tuple(action[:i]), col].mean()
         exp_y_sim_all_data = sim_filtered[col].mean()
@@ -272,8 +274,8 @@ def bootstrap_distribution_causal_bounds_with_qtwin(col, gender, age, action, x_
             exp_y_sim = sim_resampled[col].mean()
             row_append = pd.DataFrame.from_dict({'Exp_y': [exp_y], 'UB': [ub], 'LB': [lb], 'Sim_exp_y_all_data': [exp_y_sim_all_data], 'Sim_exp_y': [exp_y_sim], 'max_y':[max_y], 'min_y': [min_y], 'LB_all_data': [lb_all_data], 'UB_all_data': [ub_all_data],})
             df = pd.concat([df, row_append], ignore_index=True)
-        return df, len(real_filtered), len(sim_filtered_before_pruning), len(sim_filtered)
-    return None, len(real_filtered), len(sim_filtered_before_pruning), len(sim_filtered)
+        return df, len(real_filtered), len(sim_filtered_before_pruning), len(sim_filtered), yobs_values, ysim_values
+    return None, len(real_filtered), len(sim_filtered_before_pruning), len(sim_filtered), yobs_values, ysim_values
 
 
 
@@ -334,7 +336,7 @@ def rejected_hypotheses_bootstrap(col, trajec_actions, sim_trajec_actions):
 
 def compute_p_values(df, reverse_percentile):
     p_lb, p_ub = 1, 1
-    for alpha in np.linspace(0.01, 1.0, 100):
+    for alpha in np.linspace(1e-6, 1.0, 100):
         if reverse_percentile:
             sim_lb = 2*df['Sim_exp_y_all_data'].mean() - df['Sim_exp_y'].quantile(1-alpha)
             sim_ub = 2*df['Sim_exp_y_all_data'].mean() - df['Sim_exp_y'].quantile(alpha)
@@ -349,7 +351,7 @@ def compute_p_values(df, reverse_percentile):
             p_lb = alpha
         if sim_lb > ub and p_ub == 1:
             p_ub = alpha
-    return p_lb, p_ub
+    return round(p_lb, 3), round(p_ub, 3)
 
 
 def rejected_hypotheses_bootstrap_percentile(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile):
@@ -409,10 +411,10 @@ def rejected_hypotheses_bootstrap_percentile_with_qtwin(col, trajec_actions, sim
             logging.info(f"On hypothesis {counter}/{total_hypotheses} for t={t}")
             p = 1
             M_lower_quantile, M_upper_quantile = [], []
-            df, n_obs, n_sim_before_pruning, n_sim = bootstrap_distribution_causal_bounds_with_qtwin(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, discretised_outcome, n_iter=100, i=t)
+            df, n_obs, n_sim_before_pruning, n_sim, yobs_values, ysim_values = bootstrap_distribution_causal_bounds_with_qtwin(col, row['gender'], row['age'], row['actions'], row['x_t'], trajec_actions, sim_trajec_actions, sim_data, MIMICtable, discretised_outcome, n_iter=100, i=t)
             if df is not None:
                 p_lb, p_ub = compute_p_values(df, reverse_percentile)
-                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['a']], 'x_t': [row['s']], 'p_lb': [p_lb], 'p_ub': [p_ub], 'Y_lb_mean': [list(df['LB'])], 'Y_ub_mean': [list(df['UB'])], 'Sim_exp_y': [list(df['Sim_exp_y'])], 'Exp_y': [list(df['Exp_y'])], 't': [t], 'n_obs': [n_obs], 'n_sim_before_pruning': [n_sim_before_pruning], 'n_sim': [n_sim]})
+                row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['a']], 'x_t': [row['s']], 'p_lb': [p_lb], 'p_ub': [p_ub], 'Y_lb_mean': [list(df['LB'])], 'Y_ub_mean': [list(df['UB'])], 'Sim_exp_y': [list(df['Sim_exp_y'])], 'Exp_y': [list(df['Exp_y'])], 'y_lo': [df['min_y'].mean()], 'y_up':[df['max_y'].mean()], 'yobs_values':[yobs_values], 'ysim_values':[ysim_values], 't': [t], 'n_obs': [n_obs], 'n_sim_before_pruning': [n_sim_before_pruning], 'n_sim': [n_sim]})
                 p_values = pd.concat([p_values, row_append], ignore_index=True)
             else:
                 row_append = pd.DataFrame.from_dict({'gender': [row['gender']], 'age': [row['age']], 'actions': [row['a']], 'x_t': [row['s']], 't': [t], 'n_obs': [n_obs], 'n_sim_before_pruning': [n_sim_before_pruning], 'n_sim': [n_sim]})
