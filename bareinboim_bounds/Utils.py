@@ -44,7 +44,7 @@ def find_elements_containing(series, element):
     return series.apply(lambda x: literal_eval(str(element)) in literal_eval(str(x)))
 
 def xn_in_bn(actions_of_interest, action_taken, x_trajec_of_interest, x_trajec, t):
-    for i in range(min(t+1, len(actions_of_interest))):
+    for i in range(min(t, len(actions_of_interest))):
         if actions_of_interest[i] != action_taken[i]:
             break
     return x_trajec_of_interest[:i+1] == x_trajec[:i+1]
@@ -235,9 +235,9 @@ def bootstrap_distribution_causal_bounds(col, gender, age, action, x_trajec, tra
     return None
 
 
-def bootstrap_distribution_causal_bounds_with_qtwin(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, discretised_outcome, n_iter=100, i=3):
-    sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
-    obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+def bootstrap_distribution_causal_bounds_with_qtwin(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, discretised_outcome, n_iter=100, i=4):
+    sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(sim_data[sim_data['bloc'] == i+1], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+    obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(MIMICtable[MIMICtable['bloc'] == i+1], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     sim.loc[:,f'x_tuple'] = sim['x_t'].apply(lambda x: tuple(x[:i]))
     sim.loc[:,f'actions_tuple'] = sim['actions'].apply(lambda x: tuple(x[:i]))
     obs_data.loc[:,f'x_tuple'] = obs_data['x_t'].apply(lambda x: tuple(x[:i]))
@@ -395,10 +395,10 @@ def rejected_hypotheses_bootstrap_percentile(col, trajec_actions, sim_trajec_act
 
 def rejected_hypotheses_bootstrap_percentile_with_qtwin(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile, discretised_outcome):
     logging.info("Using bootstrapping on Qtwin as well")
-    T = 4
+    T = 5
     p_values = pd.DataFrame()
     pruned_hypotheses = pd.DataFrame()
-    for t in range(T):
+    for t in range(1, 5):
         state_actions = sim_trajec_actions[['gender', 'age', 'actions', 'x_t']].copy()
         state_actions.loc[:,'a'] = state_actions['actions'].apply(lambda x: tuple(x[:t]))
         state_actions.loc[:,'s'] = state_actions['x_t'].apply(lambda x: tuple(x[:t]))
@@ -426,9 +426,9 @@ def rejected_hypotheses_bootstrap_percentile_with_qtwin(col, trajec_actions, sim
     return len(rej_hyps), p_values, rej_hyps, len(p_values), pruned_hypotheses
 
 
-def causal_bounds_hoeffdings_p_values(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, pruning, discretised_outcome, n_iter=100, i=3):
-    sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(sim_data[sim_data['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
-    obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(MIMICtable[MIMICtable['bloc'] == i+2], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+def causal_bounds_hoeffdings_p_values(col, gender, age, action, x_trajec, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, pruning, discretised_outcome, n_iter=100, i=4):
+    sim = sim_trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(sim_data[sim_data['bloc'] == i+1], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
+    obs_data = trajec_actions[['actions', 'gender', 'age', 'icustay_id', 'x_t']].merge(MIMICtable[MIMICtable['bloc'] == i+1], left_on=['icustay_id', 'gender', 'age'], right_on=['icustay_id', 'gender', 'age'])
     sim.loc[:,f'x_tuple'] = sim['x_t'].apply(lambda x: tuple(x[:i]))
     sim.loc[:,f'actions_tuple'] = sim['actions'].apply(lambda x: tuple(x[:i]))
     obs_data.loc[:,f'x_tuple'] = obs_data['x_t'].apply(lambda x: tuple(x[:i]))
@@ -487,10 +487,10 @@ def causal_bounds_hoeffdings_p_values_without_qtwin_est(col, gender, age, action
 
 
 def rejected_hypotheses_hoeffdings(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, pruning, discretised_outcome):
-    T = 4
+    T = 5
     p_values = pd.DataFrame()
     pruned_hypotheses = pd.DataFrame()
-    for t in range(T):
+    for t in range(1, T):
         state_actions = sim_trajec_actions[['gender', 'age', 'actions', 'x_t']].copy()
         state_actions.loc[:,'a'] = state_actions['actions'].apply(lambda x: tuple(x[:t]))
         state_actions.loc[:,'s'] = state_actions['x_t'].apply(lambda x: tuple(x[:t]))
