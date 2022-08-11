@@ -243,9 +243,9 @@ def bootstrap_distribution_causal_bounds_with_qtwin(col, gender, age, action, x_
     obs_data.loc[:,f'x_tuple'] = obs_data['x_t'].apply(lambda x: tuple(x[:i]))
     obs_data.loc[:,f'actions_tuple'] = obs_data['actions'].apply(lambda x: tuple(x[:i]))
     df = pd.DataFrame()
-    real_filtered = filter_dataset_to_get_d0(x_trajec, gender, age, obs_data, action, i)
-    withheld_real_data = real_filtered.sample(frac=0.05, replace=False, random_state=1)
-    real_filtered = real_filtered.drop(withheld_real_data.index)
+    real_filtered_before_pruning = filter_dataset_to_get_d0(x_trajec, gender, age, obs_data, action, i)
+    withheld_real_data = real_filtered_before_pruning.sample(frac=0.05, replace=False, random_state=1)
+    real_filtered_before_pruning = real_filtered_before_pruning.drop(withheld_real_data.index)
     if discretised_outcome:
         max_y, min_y = 1, 0
     else:
@@ -255,15 +255,16 @@ def bootstrap_distribution_causal_bounds_with_qtwin(col, gender, age, action, x_
     sim_filtered_before_pruning = sim[(sim['gender'] == gender) & (sim['age'] == age) & (sim[f'x_tuple']==tuple(x_trajec[:i])) & (sim['actions_tuple'] == tuple(action[:i]))].copy()
     if pruning:
         sim_filtered = sim_filtered_before_pruning[sim_filtered_before_pruning[col].between(min_y, max_y)]
-        real_filtered = real_filtered[real_filtered[col].between(min_y, max_y)]
+        real_filtered = real_filtered_before_pruning[real_filtered_before_pruning[col].between(min_y, max_y)]
     else:
-        sim_filtered = sim_filtered_before_pruning
+        sim_filtered = sim_filtered_before_pruning.copy()
+        real_filtered = real_filtered_before_pruning.copy()
         sim_filtered[col] = sim_filtered[col].clip(min_y, max_y)
         real_filtered[col] = real_filtered[col].clip(min_y, max_y)
     real_filtered.loc[:, 'Y_lb'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + min_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
     real_filtered.loc[:, 'Y_ub'] = real_filtered[col]*(real_filtered['actions_tuple'] == tuple(action[:i])) + max_y*(real_filtered['actions_tuple'] != tuple(action[:i]))
-    yobs_values = list(real_filtered.loc[real_filtered['actions_tuple'] == tuple(action[:i]), col].values)
-    ysim_values = list(sim_filtered[col].values)
+    yobs_values = list(real_filtered_before_pruning.loc[real_filtered_before_pruning['actions_tuple'] == tuple(action[:i]), col].values)
+    ysim_values = list(sim_filtered_before_pruning[col].values)
     if len(real_filtered) > 10 and len(sim_filtered) > 10:
         exp_y_all_data = real_filtered.loc[real_filtered['actions_tuple'] == tuple(action[:i]), col].mean()
         exp_y_sim_all_data = sim_filtered[col].mean()
@@ -340,7 +341,7 @@ def rejected_hypotheses_bootstrap(col, trajec_actions, sim_trajec_actions):
 
 def compute_p_values(df, reverse_percentile):
     p_lb, p_ub = 1, 1
-    for alpha in np.linspace(1e-6, 1.0, 100):
+    for alpha in np.linspace(1e-6, 1.0, 500):
         if reverse_percentile:
             sim_lb = 2*df['Sim_exp_y_all_data'].mean() - df['Sim_exp_y'].quantile(1-alpha)
             sim_ub = 2*df['Sim_exp_y_all_data'].mean() - df['Sim_exp_y'].quantile(alpha)
@@ -355,7 +356,7 @@ def compute_p_values(df, reverse_percentile):
             p_lb = alpha
         if sim_lb > ub and p_ub == 1:
             p_ub = alpha
-    return round(p_lb, 3), round(p_ub, 3)
+    return round(p_lb, 6), round(p_ub, 6)
 
 
 def rejected_hypotheses_bootstrap_percentile(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile):
