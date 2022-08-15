@@ -148,7 +148,8 @@ def generate_longitudinal_plots(index, row, p_values, results_directory):
     y_obs_std = []
     p_lb_vals = []
     p_ub_vals = []
-    
+    rejected = False
+
     for t in range(1, 5):
         p_values_filtered = p_values[(p_values['gender'] == gender) & (p_values['age'] == age) & (p_values['actions'] == a[:t]) & (p_values['x_t'] == x_t[:t])  & (p_values['t'] == t)]
         p_lb_vals.append(p_values_filtered['p_lb'].values[0])
@@ -162,7 +163,9 @@ def generate_longitudinal_plots(index, row, p_values, results_directory):
         y_obs_std.append(np.std(p_values_filtered['yobs_values'].values[0])/len(p_values_filtered['yobs_values'].values[0]))
         y_obs_lb.append(np.quantile(p_values_filtered['Exp_y'].values[0], 0.05/4))
         y_obs_ub.append(np.quantile(p_values_filtered['Exp_y'].values[0], 1 - 0.05/4))
-    
+        if not rejected:
+            rejected = (p_values_filtered['rejected_holms_lb'].values[0]) or (p_values_filtered['rejected_holms_ub'].values[0])
+
     x = [1, 2, 3, 4]
     plt.style.use('fivethirtyeight')
     fig, axis = plt.subplots(1, 1, figsize=(18,8))
@@ -175,7 +178,6 @@ def generate_longitudinal_plots(index, row, p_values, results_directory):
     axis.set_ylabel(column_names_unit[row['col']], fontsize=13)
     p_lb, p_ub = row['p_lb'], row['p_ub']
     min_p_value = np.min((np.min(p_lb_vals), np.min(p_ub_vals)))
-    rejected = (row['rejected_holms_lb']) or (row['rejected_holms_ub'])
 
     plt.suptitle(f'min $p$-value = {min_p_value} | $n_{{sim}}$ = {row["n_sim"]} | $n_{{obs}}$ = {row["n_obs"]}', fontsize=16)
     plt.legend()
