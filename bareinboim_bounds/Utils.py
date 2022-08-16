@@ -398,13 +398,13 @@ def rejected_hypotheses_bootstrap_percentile(col, trajec_actions, sim_trajec_act
     return len(rej_hyps), p_values, rej_hyps, len(p_values)
 
 
-def rejected_hypotheses_bootstrap_percentile_with_qtwin(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile, pruning, discretised_outcome):
+def rejected_hypotheses_bootstrap_percentile_with_qtwin(col, trajec_actions, sim_trajec_actions, sim_trajecs_actions_held_back, sim_data, MIMICtable, reverse_percentile, pruning, discretised_outcome):
     logging.info("Using bootstrapping on Qtwin as well")
     T = 5
     p_values = pd.DataFrame()
     pruned_hypotheses = pd.DataFrame()
     for t in range(1, 5):
-        state_actions = sim_trajec_actions[['gender', 'age', 'actions', 'x_t']].copy()
+        state_actions = sim_trajecs_actions_held_back[['gender', 'age', 'actions', 'x_t']].copy()
         state_actions.loc[:,'a'] = state_actions['actions'].apply(lambda x: tuple(x[:t]))
         state_actions.loc[:,'s'] = state_actions['x_t'].apply(lambda x: tuple(x[:t]))
         state_actions = state_actions.groupby(by=['gender', 'age', 'a', 's']).filter(lambda x: len(x) >= 10).drop_duplicates(['gender', 'age', 'a', 's'])
@@ -492,12 +492,12 @@ def causal_bounds_hoeffdings_p_values_without_qtwin_est(col, gender, age, action
     return None, None, None, None, None, None
 
 
-def rejected_hypotheses_hoeffdings(col, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, pruning, discretised_outcome):
+def rejected_hypotheses_hoeffdings(col, trajec_actions, sim_trajec_actions, sim_trajecs_actions_held_back, sim_data, MIMICtable, pruning, discretised_outcome):
     T = 5
     p_values = pd.DataFrame()
     pruned_hypotheses = pd.DataFrame()
     for t in range(1, T):
-        state_actions = sim_trajec_actions[['gender', 'age', 'actions', 'x_t']].copy()
+        state_actions = sim_trajecs_actions_held_back[['gender', 'age', 'actions', 'x_t']].copy()
         state_actions.loc[:,'a'] = state_actions['actions'].apply(lambda x: tuple(x[:t]))
         state_actions.loc[:,'s'] = state_actions['x_t'].apply(lambda x: tuple(x[:t]))
         state_actions = state_actions.groupby(by=['gender', 'age', 'a', 's']).filter(lambda x: len(x) >= 10).drop_duplicates(['gender', 'age', 'a', 's'])
@@ -583,8 +583,15 @@ def get_col_bins(MIMICtable, sim_data, use_kmeans, col_bins_num, column):
     return col_bins_obs, col_bins_sim
 
 def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_dir, use_kmeans, reverse_percentile, hoeffdings_test, pruning, discretised_outcome):
+    logging.info("Split data to determine which hypotheses to run")
+    icustay_ids_held_back = sim_data.loc[np.random.binomial(1, 0.05, (len(sim_data),))==1 , 'icustay_id'].unique()
+
     logging.info("doing hypothesis testing")
     col_bins_obs, col_bins_sim = get_col_bins(MIMICtable, sim_data, use_kmeans, col_bins_num, column)
+    sim_data_held_back = sim_data[sim_data['icustay_id'].isin(icustay_ids_held_back)].copy()
+    col_bins_sim_held_back = col_bins_sim[sim_data['icustay_id'].isin(icustay_ids_held_back)]
+    col_bins_sim = col_bins_sim[~(sim_data['icustay_id'].isin(icustay_ids_held_back))]
+    sim_data = sim_data[~(sim_data['icustay_id'].isin(icustay_ids_held_back))].copy()
     logging.info("Extracted column bins for simulator data")
 
     trajectories = pd.DataFrame()
@@ -596,6 +603,13 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_d
     trajectories.loc[:,'A_t'] = MIMICtable['A']
     trajectories = trajectories[trajectories['t']!=4]
     
+    sim_trajecs_held_back = pd.DataFrame()
+    sim_trajecs_held_back.loc[:,'t'] = np.arange(len(sim_data_held_back))%5
+    sim_trajecs_held_back.loc[:,'icustay_id'] = sim_data_held_back['icustay_id']
+    sim_trajecs_held_back.loc[:,'x_t'] = col_bins_sim_held_back
+    sim_trajecs_held_back = sim_trajecs_held_back[sim_trajecs_held_back['t']!=4]
+    sim_trajecs_held_back = sim_trajecs_held_back.merge(trajectories[['t','icustay_id', 'A_t', 'gender', 'age']], left_on=['icustay_id', 't'], right_on=['icustay_id', 't'])
+
     sim_trajecs = pd.DataFrame()
     sim_trajecs.loc[:,'t'] = np.arange(len(sim_data))%5
     sim_trajecs.loc[:,'icustay_id'] = sim_data['icustay_id']
@@ -605,7 +619,10 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_d
     
     trajec_actions = get_trajec_actions_df(trajectories)
     sim_trajec_actions = get_trajec_actions_df(sim_trajecs)
+    sim_trajecs_actions_held_back = get_trajec_actions_df(sim_trajecs_held_back)
     logging.info(f'trajec_actions length: {len(trajec_actions)}')
+    logging.info(f'trajec_actions held back length: {len(sim_trajecs_actions_held_back)}')
+    
     if discretised_outcome:
         MIMICtable[column] = col_bins_obs
         sim_data[column] = col_bins_sim
@@ -617,24 +634,28 @@ def do_hypothesis_testing(column, MIMICtable, sim_data, col_bins_num, hyp_test_d
     if use_kmeans:
         trajec_actions.to_csv(f'{hyp_test_dir}/trajec_actions.csv', index=False)
         sim_trajec_actions.to_csv(f'{hyp_test_dir}/sim_trajec_actions.csv', index=False)
+        sim_trajecs_actions_held_back.to_csv(f'{hyp_test_dir}/sim_trajecs_actions_held_back.csv', index=False)
     else:
         trajec_actions.to_csv(f'{hyp_test_dir}/trajec_actions_{column}.csv', index=False)
         sim_trajec_actions.to_csv(f'{hyp_test_dir}/sim_trajec_actions_{column}.csv', index=False)
+        sim_trajecs_actions_held_back.to_csv(f'{hyp_test_dir}/sim_trajecs_actions_held_back_{column}.csv', index=False)
 
     if hoeffdings_test:
         logging.info("Using hoeffdings for hypothesis testing")
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_hoeffdings(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, pruning, discretised_outcome)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_hoeffdings(column, trajec_actions, sim_trajec_actions, sim_trajecs_actions_held_back, sim_data, MIMICtable, pruning, discretised_outcome)
     else:
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_bootstrap_percentile_with_qtwin(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile, pruning, discretised_outcome)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_bootstrap_percentile_with_qtwin(column, trajec_actions, sim_trajec_actions, sim_trajecs_actions_held_back, sim_data, MIMICtable, reverse_percentile, pruning, discretised_outcome)
     return num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses, trajec_actions, sim_trajec_actions
 
 def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bin, use_kmeans, reverse_percentile, hoeffdings_test, pruning, discretised_outcome):
     if use_kmeans:
         trajec_actions = pd.read_csv(f"{directory}/trajec_actions.csv", converters={'actions': eval, 'x_t': eval})
         sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions.csv", converters={'actions': eval, 'x_t': eval})
+        sim_trajecs_actions_held_back = pd.read_csv(f"{directory}/sim_trajecs_actions_held_back.csv", converters={'actions': eval, 'x_t': eval})
     else:
         trajec_actions = pd.read_csv(f"{directory}/trajec_actions_{column}.csv", converters={'actions': eval, 'x_t': eval})
         sim_trajec_actions = pd.read_csv(f"{directory}/sim_trajec_actions_{column}.csv", converters={'actions': eval, 'x_t': eval})
+        sim_trajecs_actions_held_back = pd.read_csv(f"{directory}/sim_trajecs_actions_held_back_{column}.csv", converters={'actions': eval, 'x_t': eval})
     if sofa_bin == 0:
         logging.info(f'Sofa bin: {sofa_bin}')
         trajec_actions = trajec_actions[trajec_actions['SOFA'] <= 6]
@@ -657,7 +678,7 @@ def do_hypothesis_testing_saved(column, directory, sim_data, MIMICtable, sofa_bi
 
     if hoeffdings_test:
         logging.info("Using hoeffdings for hypothesis testing")
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_hoeffdings(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, pruning, discretised_outcome)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_hoeffdings(column, trajec_actions, sim_trajec_actions, sim_trajecs_actions_held_back, sim_data, MIMICtable, pruning, discretised_outcome)
     else:
-        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_bootstrap_percentile_with_qtwin(column, trajec_actions, sim_trajec_actions, sim_data, MIMICtable, reverse_percentile, pruning, discretised_outcome)
+        num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses = rejected_hypotheses_bootstrap_percentile_with_qtwin(column, trajec_actions, sim_trajec_actions, sim_trajecs_actions_held_back, sim_data, MIMICtable, reverse_percentile, pruning, discretised_outcome)
     return num_rej_hyps, p_values, rej_hyps, total_hypotheses, pruned_hypotheses, trajec_actions, sim_trajec_actions

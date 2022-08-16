@@ -232,14 +232,14 @@ def create_action_bins(MIMICtable):
 
 
 def load_mimic_data(obs_path, load_generated):
-    MIMICtable = pd.read_csv(args.obs_path + "/MIMIC-1hourly-length-5-combined.csv")
+    MIMICtable = pd.read_csv(obs_path + "/MIMIC-1hourly-length-5-combined.csv")
     if load_generated:
         logging.info("Using VAE generated observational data for hypothesis testing")
         MIMIC_generated_males = pd.read_csv(
-            args.obs_path + "/MIMIC-generated-length-5-gender-0.0.csv"
+            obs_path + "/MIMIC-generated-length-5-gender-0.0.csv"
         )
         MIMIC_generated_females = pd.read_csv(
-            args.obs_path + "/MIMIC-generated-length-5-gender-1.0.csv"
+            obs_path + "/MIMIC-generated-length-5-gender-1.0.csv"
         )
         MIMICtable = pd.concat(
             [MIMICtable, MIMIC_generated_males, MIMIC_generated_females],
@@ -260,6 +260,7 @@ def load_mimic_data(obs_path, load_generated):
 
 
 def main(args):
+    np.random.seed(0)
     if args.saved_dir is not None:
         logging.info(f"Using saved processed data from dir {args.saved_dir}")
     else:

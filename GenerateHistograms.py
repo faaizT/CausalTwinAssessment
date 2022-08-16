@@ -77,7 +77,7 @@ def get_hoeffding_bounds(index, row, alpha=0.05):
 
 def generate_histograms_bootstrapping(index, row, results_directory, total_hypotheses):
     fig, axs = plt.subplots(1, 2, figsize=(18,8))
-    plt.style.use('fivethirtyeight')
+    plt.style.use('ggplot')
     a = axs[1].hist(row['Y_lb_mean'], label='$Q_{lo}$', density=True, alpha=0.4, bins='auto', color='blue')
     a = axs[1].hist(row['Y_ub_mean'], label='$Q_{up}$', density=True, alpha=0.4, bins='auto', color=sns.color_palette("mako", 10)[5])
     a = axs[1].hist(row['Sim_exp_y'], label='$Q^{twin}$', density=True, alpha=0.4, bins='auto', color='red')
@@ -88,7 +88,7 @@ def generate_histograms_bootstrapping(index, row, results_directory, total_hypot
     # axs[0].axvline(row['y_lo'], linestyle='--', color='black', label='$y_{lo}$ & $y_{up}$')
     # axs[0].axvline(x=row['y_up'], linestyle='--', color='black')
     p_lb, p_ub = row['p_lb'], row['p_ub']
-    plt.suptitle(f'p_lb = {p_lb} | p_ub = {p_ub} | n_sim = {row["n_sim"]} | n_obs = {row["n_obs"]}', fontsize=14)
+    # plt.suptitle(f'p_lb = {p_lb} | p_ub = {p_ub} | n_sim = {row["n_sim"]} | n_obs = {row["n_obs"]}', fontsize=14)
     rejected = (row['rejected_holms_lb']) or (row['rejected_holms_ub'])
     figtitle = f"{row['col']}_hyp_{index}"
     
@@ -99,8 +99,8 @@ def generate_histograms_bootstrapping(index, row, results_directory, total_hypot
     # axs[1].fill_betweenx([0,max_ylim], yub_interval[0], yub_interval[1], color='g', alpha=0.1,)
     axs[1].axvline(row['y_lo'], linestyle='--', color='black', label='$y_{lo}$ & $y_{up}$')
     axs[1].axvline(x=row['y_up'], linestyle='--', color='black')
-    axs[0].set_xlabel(column_names_unit[row['col']], fontsize=14)
-    axs[1].set_xlabel(column_names_unit[row['col']], fontsize=14)
+    axs[0].set_xlabel(column_names_unit[row['col']], fontsize=20)
+    axs[1].set_xlabel(column_names_unit[row['col']], fontsize=20)
     axs[0].set_yticks([])
     axs[1].set_yticks([])
     axs[0].grid(False)
@@ -125,8 +125,14 @@ def generate_histograms_bootstrapping(index, row, results_directory, total_hypot
     axs[0].axhline(max_ylim, color='black')
     axs[0].axvline(max_xlim, color='black')
 
-    axs[1].legend(fontsize=14, )
-    axs[0].legend(fontsize=14, )    
+    axs[1].legend(fontsize=20, )
+    axs[0].legend(fontsize=20, )    
+    axs[0].tick_params(axis='both', which='major', labelsize=20)
+    axs[0].tick_params(axis='both', which='minor', labelsize=20)
+    axs[1].tick_params(axis='both', which='major', labelsize=20)
+    axs[1].tick_params(axis='both', which='minor', labelsize=20)
+    plt.tight_layout()
+
     plt.savefig(f"{results_directory}/histograms/{row['col']}_rej{rejected}/{figtitle}")    
     plt.close()
 
@@ -179,7 +185,7 @@ def generate_longitudinal_plots(index, row, p_values, results_directory):
     p_lb, p_ub = row['p_lb'], row['p_ub']
     min_p_value = np.min((np.min(p_lb_vals), np.min(p_ub_vals)))
 
-    plt.suptitle(f'min $p$-value = {min_p_value} | $n_{{sim}}$ = {row["n_sim"]} | $n_{{obs}}$ = {row["n_obs"]}', fontsize=16)
+    # plt.suptitle(f'min $p$-value = {min_p_value} | $n_{{sim}}$ = {row["n_sim"]} | $n_{{obs}}$ = {row["n_obs"]}', fontsize=16)
     plt.legend()
 
     figtitle = f"{row['col']}_hyp_{index}"
