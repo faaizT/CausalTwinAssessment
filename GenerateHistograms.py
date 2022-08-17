@@ -70,33 +70,33 @@ def get_hoeffding_bounds(index, row, alpha=0.05):
     ylb_ub = np.mean(row['Y_lb_mean']) + delta_obs
     yub_lb = np.mean(row['Y_ub_mean']) - delta_obs
     yub_ub = np.mean(row['Y_ub_mean']) + delta_obs
-    ysim_lb = np.mean(row['ysim_values']) - delta_sim
-    ysim_ub = np.mean(row['ysim_values']) + delta_sim
+    ysim_lb = np.mean(np.clip(row['ysim_values'], ylo, yup)) - delta_sim
+    ysim_ub = np.mean(np.clip(row['ysim_values'], ylo, yup)) + delta_sim
     return [ylb_lb , ylb_ub], [ysim_lb, ysim_ub], [yub_lb, yub_ub]
 
 
-def generate_histograms_bootstrapping(index, row, results_directory, total_hypotheses):
+def generate_histograms_bootstrapping(index, row, results_directory, total_hypotheses, with_hoeff=False):
     fig, axs = plt.subplots(1, 2, figsize=(18,8))
     plt.style.use('ggplot')
     a = axs[1].hist(row['Y_lb_mean'], label='$Q_{lo}$', density=True, alpha=0.4, bins='auto', color='blue')
     a = axs[1].hist(row['Y_ub_mean'], label='$Q_{up}$', density=True, alpha=0.4, bins='auto', color=sns.color_palette("mako", 10)[5])
     a = axs[1].hist(row['Sim_exp_y'], label='$Q^{twin}$', density=True, alpha=0.4, bins='auto', color='red')
-    
-    
+
     axs[0].hist(row['yobs_values'], label='$Y$ values', density=True, alpha=0.4, bins='auto', color='blue')
     axs[0].hist(row['ysim_values'], label='$Y^{twin}$ values', density=True, alpha=0.4, bins='auto', color='red')
-    # axs[0].axvline(row['y_lo'], linestyle='--', color='black', label='$y_{lo}$ & $y_{up}$')
-    # axs[0].axvline(x=row['y_up'], linestyle='--', color='black')
     p_lb, p_ub = row['p_lb'], row['p_ub']
-    # plt.suptitle(f'p_lb = {p_lb} | p_ub = {p_ub} | n_sim = {row["n_sim"]} | n_obs = {row["n_obs"]}', fontsize=14)
     rejected = (row['rejected_holms_lb']) or (row['rejected_holms_ub'])
     figtitle = f"{row['col']}_hyp_{index}"
     
-    # ylb_interval, ysim_interval, yub_interval = get_hoeffding_bounds(index, row, alpha=0.05/total_hypotheses)
-    # max_ylim = axs[1].get_ylim()[1]
-    # axs[1].fill_betweenx([0, max_ylim], ylb_interval[0], ylb_interval[1], color='g', alpha=0.1, label='Hoeffding CIs')
-    # axs[1].fill_betweenx([0,max_ylim], ysim_interval[0], ysim_interval[1], color='g', alpha=0.1,)
-    # axs[1].fill_betweenx([0,max_ylim], yub_interval[0], yub_interval[1], color='g', alpha=0.1,)
+    if with_hoeff:
+        ylb_interval, ysim_interval, yub_interval = get_hoeffding_bounds(index, row, alpha=0.05/total_hypotheses)
+        ylb_interval = np.clip(ylb_interval, row['y_lo'], row['y_up'])
+        ysim_interval = np.clip(ysim_interval, row['y_lo'], row['y_up'])
+        yub_interval = np.clip(yub_interval, row['y_lo'], row['y_up'])
+        max_ylim = axs[1].get_ylim()[1]
+        axs[1].fill_betweenx([0, max_ylim], ylb_interval[0], ylb_interval[1], color='purple', alpha=0.1, label='Hoeffding CIs')
+        axs[1].fill_betweenx([0,max_ylim], ysim_interval[0], ysim_interval[1], color='purple', alpha=0.1,)
+        axs[1].fill_betweenx([0,max_ylim], yub_interval[0], yub_interval[1], color='purple', alpha=0.1,)
     axs[1].axvline(row['y_lo'], linestyle='--', color='black', label='$y_{lo}$ & $y_{up}$')
     axs[1].axvline(x=row['y_up'], linestyle='--', color='black')
     axs[0].set_xlabel(column_names_unit[row['col']], fontsize=20)
@@ -133,7 +133,10 @@ def generate_histograms_bootstrapping(index, row, results_directory, total_hypot
     axs[1].tick_params(axis='both', which='minor', labelsize=20)
     plt.tight_layout()
 
-    plt.savefig(f"{results_directory}/histograms/{row['col']}_rej{rejected}/{figtitle}")    
+    if with_hoeff:
+        plt.savefig(f"{results_directory}/histograms/{row['col']}_rej{rejected}/{figtitle}_with_hoeff")
+    else:
+        plt.savefig(f"{results_directory}/histograms/{row['col']}_rej{rejected}/{figtitle}")
     plt.close()
 
 
