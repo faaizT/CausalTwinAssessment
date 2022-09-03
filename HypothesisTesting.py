@@ -109,6 +109,48 @@ def load_pulse_data(sim_path, MIMICtable, load_generated):
     return sim_data
 
 
+def load_pulse_data_new(sim_path, MIMICtable):
+    column_mappings = {
+        "Albumin - BloodConcentration (mg/L)": "Albumin",
+        "ArterialCarbonDioxidePressure (mmHg)": "paCO2",
+        "ArterialOxygenPressure (mmHg)": "paO2",
+        "Bicarbonate - BloodConcentration (mg/L)": "HCO3",
+        "BloodPH (None)": "Arterial_pH",
+        "Calcium - BloodConcentration (mg/L)": "Calcium",
+        "Chloride - BloodConcentration (mg/L)": "Chloride",
+        "Creatinine - BloodConcentration (mg/L)": "Creatinine",
+        "DiastolicArterialPressure (mmHg)": "DiaBP",
+        "Glucose - BloodConcentration (mg/L)": "Glucose",
+        "Lactate - BloodConcentration (mg/L)": "Arterial_lactate",
+        "MeanArterialPressure (mmHg)": "MeanBP",
+        "Potassium - BloodConcentration (mg/L)": "Potassium",
+        "RespirationRate (1/min)": "RR",
+        "SkinTemperature (degC)": "Temp_C",
+        "Sodium - BloodConcentration (mg/L)": "Sodium",
+        "SystolicArterialPressure (mmHg)": "SysBP",
+        "WhiteBloodCellCount (ct/uL)": "WBC_count",
+        "HeartRate (1/min)": "HR",
+    }
+    extension = "final_.csv"
+    all_filenames = [i for i in glob.glob(f"{sim_path}/*{extension}")]
+
+    logging.info(f"Total number of simulated trajectories: {len(all_filenames)}")
+    sim_data = pd.concat([pd.read_csv(f) for f in all_filenames])
+    sim_data["icustay_id"] = sim_data["icustay_id"].astype(int)
+    sim_data["bloc"] = np.arange(len(sim_data)) % 5 + 1
+    sim_data = sim_data.reset_index(drop=True)
+    sim_data['order'] = np.arange(len(sim_data))
+
+    sim_rename = {}
+    for k, v in column_mappings.items():
+        sim_rename.update({k: f"{v}"})
+
+    sim_data = sim_data.rename(columns=sim_rename)
+    sim_data = sim_data.merge(MIMICtable[["icustay_id", "age"]].drop_duplicates(inplace=False),left_on=["icustay_id",], right_on=["icustay_id",], sort=False, how='left')
+    sim_data.sort_values(by=['order'], inplace=True)
+    return sim_data
+
+
 def load_biogears_data(sim_path, MIMICtable):
     column_mappings = {
         "Albumin-BloodConcentration(ug/mL)": "Albumin",
@@ -259,6 +301,46 @@ def load_mimic_data(obs_path, load_generated):
     return MIMICtable
 
 
+def get_actions_gender_age_df(trajectories):
+    median_doses = trajectories.groupby(by=['A']).median()[['input_1hourly', 'median_dose_vaso']].reset_index()
+    trajec_actions = trajectories.drop(columns=['input_1hourly', 'median_dose_vaso'])
+    trajec_actions = pd.merge(left=trajec_actions, right=median_doses, left_on='A', right_on='A')
+    trajec_actions = trajectories.loc[trajectories['bloc']==1].reset_index(drop=True)
+    trajec_actions_t1 = trajectories.loc[trajectories['bloc']==2].reset_index(drop=True)
+    trajec_actions_t2 = trajectories.loc[trajectories['bloc']==3].reset_index(drop=True)
+    trajec_actions_t3 = trajectories.loc[trajectories['bloc']==4].reset_index(drop=True)
+    trajec_actions_t1.rename(columns={'A':'A_1', 'input_1hourly': 'input_1hourly_1', 'median_dose_vaso': 'median_dose_vaso_1'}, inplace=True)
+    trajec_actions_t2.rename(columns={'A':'A_2', 'input_1hourly': 'input_1hourly_2', 'median_dose_vaso': 'median_dose_vaso_2'}, inplace=True)
+    trajec_actions_t3.rename(columns={'A':'A_3', 'input_1hourly': 'input_1hourly_3', 'median_dose_vaso': 'median_dose_vaso_3'}, inplace=True)
+    trajec_actions = pd.merge(left=trajec_actions, right=trajec_actions_t1[['A_1', 'input_1hourly_1', 'median_dose_vaso_1']], left_index=True, right_index=True)
+    trajec_actions = pd.merge(left=trajec_actions, right=trajec_actions_t2[['A_2', 'input_1hourly_2', 'median_dose_vaso_2']], left_index=True, right_index=True)
+    trajec_actions = pd.merge(left=trajec_actions, right=trajec_actions_t3[['A_3', 'input_1hourly_3', 'median_dose_vaso_3']], left_index=True, right_index=True)
+    trajec_actions.loc[:,'actions'] = trajec_actions.loc[:,['A', 'A_1', 'A_2', 'A_3']].apply(lambda x: tuple(x), axis=1)
+    trajec_actions.loc[:,'input_1hourly'] = trajec_actions.loc[:,['input_1hourly', 'input_1hourly_1', 'input_1hourly_2', 'input_1hourly_3']].apply(lambda x: tuple(x), axis=1)
+    trajec_actions.loc[:,'median_dose_vaso'] = trajec_actions.loc[:,['median_dose_vaso', 'median_dose_vaso_1', 'median_dose_vaso_2', 'median_dose_vaso_3']].apply(lambda x: tuple(x), axis=1)
+    action_count = trajec_actions['actions'].value_counts().reset_index().rename(columns={'actions':'actions_count', 'index': 'actions'}, inplace=False)
+    trajec_actions = pd.merge(left=trajec_actions, right=action_count, left_on='actions', right_on='actions')
+    return trajec_actions.loc[:,  ['actions', 'gender', 'age', 'actions_count', 'input_1hourly', 'median_dose_vaso']]
+
+
+def load_observational_data_and_split(args, load=False):
+    MIMICtable = load_mimic_data(args.obs_path, args.load_generated)
+    if load:
+        MIMIC_data_held_back = pd.read_csv(args.obs_path + "/MIMIC-1hourly-held-back.csv")
+        MIMIC_data_used = pd.read_csv(args.obs_path + "/MIMIC-1hourly-not-held-back.csv")
+        actions_df = pd.read_csv(args.obs_path + "/MIMIC-actions-to-generate.csv")
+    else:
+        icustay_ids_held_back = MIMICtable.loc[np.random.binomial(1, 0.01, (len(MIMICtable),))==1 , 'icustay_id'].unique()
+        MIMIC_data_held_back = MIMICtable[MIMICtable['icustay_id'].isin(icustay_ids_held_back)].copy()
+        MIMIC_data_held_back.to_csv(args.obs_path + "/MIMIC-1hourly-held-back.csv", index=False)
+        MIMIC_data_used = MIMICtable[~(MIMICtable['icustay_id'].isin(icustay_ids_held_back))].copy()
+        MIMIC_data_used.to_csv(args.obs_path + "/MIMIC-1hourly-not-held-back.csv", index=False)
+        actions_df = get_actions_gender_age_df(MIMIC_data_held_back)
+        actions_df.drop_duplicates().reset_index(drop=True).to_csv(args.obs_path + "/MIMIC-actions-to-generate.csv", index=False)
+    return MIMICtable, MIMIC_data_held_back, MIMIC_data_used, actions_df
+
+
+
 def main(args):
     np.random.seed(0)
     if args.saved_dir is not None:
@@ -266,7 +348,8 @@ def main(args):
     else:
         logging.info("Not using saved data")
 
-    MIMICtable = load_mimic_data(args.obs_path, args.load_generated)
+    MIMICtable, MIMIC_data_held_back, MIMIC_data_used, actions_df = load_observational_data_and_split(args, load=True)
+
     if not args.load_generated:
         MIMICtable_generated = load_mimic_data(args.obs_path, load_generated=True)
     else:
@@ -275,7 +358,7 @@ def main(args):
         if args.load_generated_sim:
             sim_data = pd.read_csv("/data/ziz/taufiq/export-dir/pulse-data-processed-augmented.csv")
         else:
-            sim_data = pd.read_csv("/data/ziz/taufiq/export-dir/pulse-data-processed-notaugmented.csv")
+            sim_data = pd.read_csv("/data/ziz/taufiq/export-dir/pulse_data_all_actions_combined.csv")
     else:
         sim_data = load_biogears_data(args.sim_path, MIMICtable)
 
@@ -292,8 +375,10 @@ def main(args):
         ) = do_hypothesis_testing_saved(
             args.col_name,
             args.saved_dir,
+            MIMICtable, 
+            MIMIC_data_held_back, 
+            MIMIC_data_used, 
             sim_data,
-            MIMICtable,
             args.sofa_bin,
             args.use_kmeans,
             args.reverse_percentile,
@@ -312,7 +397,9 @@ def main(args):
             sim_trajec_actions,
         ) = do_hypothesis_testing(
             args.col_name,
-            MIMICtable,
+            MIMICtable, 
+            MIMIC_data_held_back, 
+            MIMIC_data_used, 
             sim_data,
             args.col_bin_num,
             args.hyp_test_dir,
@@ -365,12 +452,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sim_path",
         help="path to sim data directory",
-        default="/data/ziz/taufiq/pulse-data-5-step",
+        default="/data/ziz/not-backed-up/taufiq/pulse-simulated-data-all-actions",
     )
     parser.add_argument(
         "--hyp_test_dir",
         help="Directory to save hypothesis test info",
-        default="/data/localhost/not-backed-up/taufiq/HypothesisTesting/dry-run",
+        default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/dry-run",
     )
     parser.add_argument(
         "--saved_dir", 

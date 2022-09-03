@@ -12,6 +12,7 @@ from utils import str2bool
 import matplotlib.pyplot as plt
 import seaborn as sns
 from statsmodels.stats.multitest import multipletests
+import matplotlib as mpl
 
 
 column_names_dict = {
@@ -73,14 +74,84 @@ def get_hoeffding_bounds(index, row, alpha=0.05):
     ysim_lb = np.mean(np.clip(row['ysim_values'], ylo, yup)) - delta_sim
     ysim_ub = np.mean(np.clip(row['ysim_values'], ylo, yup)) + delta_sim
     return [ylb_lb , ylb_ub], [ysim_lb, ysim_ub], [yub_lb, yub_ub]
+    
+
+def add_interval(ax, xdata, ydata, color, caps="  ",):
+    line = ax.add_line(mpl.lines.Line2D(xdata, ydata, color=color, linewidth=4, alpha=0.4),)
+    anno_args1 = {
+        'ha': 'left',
+        'va': 'center',
+        'size': 16,
+        'color': color
+    }
+    anno_args2 = {
+        'ha': 'right',
+        'va': 'center',
+        'size': 16,
+        'color': color
+    }
+
+    a0 = ax.annotate(caps[0], xy=(xdata[0], ydata[0]), alpha=0.4, **anno_args2)
+    a1 = ax.annotate(caps[1], xy=(xdata[1], ydata[1]), alpha=0.4, **anno_args1)
+    return (line,(a0,a1))
+
+
+def generate_hoeff_intervals(index, row, results_directory, total_hypotheses):
+    fig, axs = plt.subplots(2, 1, figsize=(6,7), gridspec_kw={'height_ratios': [4, 1]})
+    plt.style.use('ggplot')
+
+    axs[0].hist(row['yobs_values'], label='$Y(A_{1:t})$', density=True, alpha=0.4, bins='auto', color='blue')
+    axs[0].hist(row['ysim_values'], label='$\widehat{Y}(a_{1:t})$', density=True, alpha=0.4, bins='auto', color='red')
+    p_lb, p_ub = row['p_lb'], row['p_ub']
+    rejected = (row['rejected_holms_lb']) or (row['rejected_holms_ub'])
+    figtitle = f"{row['col']}_hyp_{index}"
+    
+    ylb_interval, ysim_interval, yub_interval = get_hoeffding_bounds(index, row, alpha=0.05/total_hypotheses)
+    ylb_interval = np.clip(ylb_interval, row['y_lo'], row['y_up'],)
+    ysim_interval = np.clip(ysim_interval, row['y_lo'], row['y_up'], )
+    yub_interval = np.clip(yub_interval, row['y_lo'], row['y_up'], )
+    
+    add_interval(axs[1], ylb_interval, [0,0], caps="||", color="blue")
+    add_interval(axs[1], yub_interval, [1,1], caps="||", color="blue")
+    add_interval(axs[1], ysim_interval, [0.5,0.5], caps="||", color="red")
+    
+    axs[1].plot(ylb_interval, [0.5,0.5], lw=6, color='blue', alpha=0.)
+    axs[1].plot(yub_interval, [0.5,0.5], lw=6, color='red',  alpha=0.)
+    axs[1].plot(ysim_interval, [0.5,0.5], lw=6, color=sns.color_palette("mako", 10)[5],alpha=0.)
+
+    axs[0].set_xlabel(column_names_unit[row['col']], fontsize=20)
+    axs[0].set_yticks([])
+    axs[1].set_yticks([0, 0.5, 1])
+    axs[1].set_yticklabels(['$Q_{lo}$', '$\widehat{Q}$', '$Q_{up}$'])
+    axs[0].grid(False)
+    axs[1].grid(False)
+
+
+    min_ylim = axs[1].get_ylim()[0]
+    max_ylim = axs[1].get_ylim()[1]
+    axs[1].set_ylim([-0.2, 1.2])
+
+    axs[0].legend(fontsize=16, ) 
+
+    axs[1].set_xlabel('Hoeffding Intervals', fontsize=20)
+    axs[0].tick_params(axis='both', which='major', labelsize=20)
+    axs[0].tick_params(axis='both', which='minor', labelsize=20)
+    axs[1].tick_params(axis='both', which='major', labelsize=20)
+    axs[1].tick_params(axis='both', which='minor', labelsize=20)
+    
+    plt.tight_layout()
+
+    plt.savefig(f"{results_directory}/histograms/{row['col']}_rej{rejected}/{figtitle}_only_hoeff")    
+    plt.close()
+
 
 
 def generate_histograms_bootstrapping(index, row, results_directory, total_hypotheses, with_hoeff=False):
     fig, axs = plt.subplots(1, 2, figsize=(18,8))
     plt.style.use('ggplot')
-    a = axs[1].hist(row['Y_lb_mean'], label='$Q_{lo}$', density=True, alpha=0.4, bins='auto', color='blue')
-    a = axs[1].hist(row['Y_ub_mean'], label='$Q_{up}$', density=True, alpha=0.4, bins='auto', color=sns.color_palette("mako", 10)[5])
-    a = axs[1].hist(row['Sim_exp_y'], label='$Q^{twin}$', density=True, alpha=0.4, bins='auto', color='red')
+    a = axs[1].hist(row['Y_lb_mean'], label='$Q_{lo}$', density=False, alpha=0.4, bins='auto', color='blue')
+    a = axs[1].hist(row['Y_ub_mean'], label='$Q_{up}$', density=False, alpha=0.4, bins='auto', color=sns.color_palette("mako", 10)[5])
+    a = axs[1].hist(row['Sim_exp_y'], label='$Q^{twin}$', density=False, alpha=0.4, bins='auto', color='red')
 
     axs[0].hist(row['yobs_values'], label='$Y$ values', density=True, alpha=0.4, bins='auto', color='blue')
     axs[0].hist(row['ysim_values'], label='$Y^{twin}$ values', density=True, alpha=0.4, bins='auto', color='red')
@@ -225,7 +296,8 @@ def main(args):
     os.makedirs(f"{args.image_export_dir}/longitudinal/{args.col_name}_rejTrue", exist_ok=True)
     os.makedirs(f"{args.image_export_dir}/longitudinal/{args.col_name}_rejFalse", exist_ok=True)
     for index, row in p_values.iterrows():
-        generate_histograms_bootstrapping(index, row, args.image_export_dir, total_hypotheses=len(p_vals))
+        generate_hoeff_intervals(index, row, args.image_export_dir, total_hypotheses=len(p_vals))
+        generate_histograms_bootstrapping(index, row, args.image_export_dir, total_hypotheses=len(p_vals), with_hoeff=True)
 
     p_values_complete_trajecs = p_values[(p_values['t']==4)]
     for index, row in p_values_complete_trajecs.iterrows():
@@ -244,12 +316,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--results_dir", 
         help="Location of saved results data", 
-        default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/cts_outcome_2bins_yminmax_8020quantiles_d0_splitting_t5/perc",
+        default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/hyp_testing_new_pulse_data/perc",
     )
     parser.add_argument(
         "--image_export_dir", 
         help="Location to save images", 
-        default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/cts_outcome_2bins_yminmax_8020quantiles_d0_splitting_t5/images",
+        default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/hyp_testing_new_pulse_data/images",
     )
     args = parser.parse_args()
     main(args)
