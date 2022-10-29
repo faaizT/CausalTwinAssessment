@@ -324,6 +324,131 @@ def generate_longitudinal_plots(index, row, p_values, results_directory):
     plt.close()
     
 
+def generate_longitudinal_plots_of_raw_values(index, row, p_values, results_directory, fig=None, axis=None):
+    a = row['actions']
+    age = row['age']
+    gender = row['gender']
+    x_t = row['x_t']
+    
+    y_lb = []
+    y_ub = []
+    y_twin = []
+    y_twin_lb = []
+    y_twin_ub = []
+    y_obs = []
+    y_obs_lb = []
+    y_obs_ub = []
+    y_obs_std = []
+    p_lb_vals = []
+    p_ub_vals = []
+    rejected = False
+
+    for t in range(1, 5):
+        p_values_filtered = p_values[(p_values['gender'] == gender) & (p_values['age'] == age) & (p_values['actions'] == a[:t]) & (p_values['x_t'] == x_t[:t])  & (p_values['t'] == t)]
+        p_lb_vals.append(p_values_filtered['p_lb'].values[0])
+        p_ub_vals.append(p_values_filtered['p_ub'].values[0])
+        y_lb.append(np.quantile(p_values_filtered['yobs_values'].values[0], 0.05/4))
+        y_ub.append(np.quantile(p_values_filtered['yobs_values'].values[0], 1 - 0.05/4))
+        y_twin.append(np.mean(p_values_filtered['Sim_exp_y'].values[0]))
+        y_twin_lb.append(np.quantile(p_values_filtered['ysim_values'].values[0], 0.05/4))
+        y_twin_ub.append(np.quantile(p_values_filtered['ysim_values'].values[0], 1 - 0.05/4))
+        y_obs.append(np.mean(p_values_filtered['Exp_y'].values[0]))
+        if not rejected:
+            rejected = (p_values_filtered['rejected_holms_lb'].values[0]) or (p_values_filtered['rejected_holms_ub'].values[0])
+
+    x = [1, 2, 3, 4]
+    plt.style.use('fivethirtyeight')
+    save_fig = fig is None
+    if save_fig:
+        fig, axis = plt.subplots(1, 1, figsize=(18,8))
+    axis.fill_between(x, y_twin_lb, y_twin_ub, label="$\widehat{Y}_t(a_{1:t})$", color=sns.color_palette("mako", 10)[5], alpha = 0.3)
+    axis.fill_between(x, y_lb, y_ub, color='r', alpha=0.3, label='$Y_t(A_{1:t})\mid A_{1:t}=a_{1:t}$')
+    axis.set_xlabel('Time (hr)', fontsize=13)
+    axis.set_ylabel(column_names_unit[row['col']], fontsize=13)
+    p_lb, p_ub = row['p_lb'], row['p_ub']
+    min_p_value = np.min((np.min(p_lb_vals), np.min(p_ub_vals)))
+
+    axis.legend()
+
+    if save_fig:
+        figtitle = f"{row['col']}_hyp_{index}_raw"
+        plt.savefig(f"{results_directory}/longitudinal/{row['col']}_rej{rejected}/{figtitle}.pdf", format="pdf", bbox_inches='tight')  
+        plt.close()
+
+
+def generate_longitudinal_plots_one_sided(index, row, p_values, results_directory, total_hypotheses, lo, fig=None, axis=None):
+    a = row['actions']
+    age = row['age']
+    gender = row['gender']
+    x_t = row['x_t']
+    
+    y_lb = []
+    y_ub = []
+    y_twin = []
+    y_twin_lb = []
+    y_twin_ub = []
+    y_obs = []
+    y_obs_lb = []
+    y_obs_ub = []
+    y_obs_std = []
+    p_lb_vals = []
+    p_ub_vals = []
+    rejected = False
+
+    for t in range(1, 5):
+        p_values_filtered = p_values[(p_values['gender'] == gender) & (p_values['age'] == age) & (p_values['actions'] == a[:t]) & (p_values['x_t'] == x_t[:t])  & (p_values['t'] == t)]
+        ylb_interval, ysim_interval, yub_interval = get_hoeffding_bounds(index, row=p_values_filtered.iloc[0], alpha=0.05/total_hypotheses)
+        ylb_interval = np.clip(ylb_interval, row['y_lo'], row['y_up'],)
+        ysim_interval = np.clip(ysim_interval, row['y_lo'], row['y_up'], )
+        yub_interval = np.clip(yub_interval, row['y_lo'], row['y_up'], )
+        p_lb_vals.append(p_values_filtered['p_lb'].values[0])
+        p_ub_vals.append(p_values_filtered['p_ub'].values[0])
+        if lo:
+            y_lb.append(row['y_lo'])
+            y_ub.append(ylb_interval[1])
+            y_twin_lb.append(ysim_interval[0])
+            y_twin_ub.append(row['y_up'])
+        else:
+            y_lb.append(yub_interval[0])
+            y_ub.append(row['y_up'])
+            y_twin_lb.append(row['y_lo'])
+            y_twin_ub.append(ysim_interval[1])
+        if not rejected:
+            rejected = (p_values_filtered['rejected_holms_lb'].values[0]) or (p_values_filtered['rejected_holms_ub'].values[0])
+
+    x = [1, 2, 3, 4]
+    plt.style.use('fivethirtyeight')
+    save_fig = fig is None
+    if save_fig:
+        fig, axis = plt.subplots(1, 1, figsize=(18,8))
+    axis.fill_between(x, y_twin_lb, y_twin_ub, label="$\widehat{Q}$ intervals", color=sns.color_palette("mako", 10)[5], alpha = 0.3)
+    if lo:
+        axis.fill_between(x, y_lb, y_ub, color='r', alpha=0.3, label='$Q_{lo}$ intervals')
+    else:
+        axis.fill_between(x, y_lb, y_ub, color='r', alpha=0.3, label='$Q_{up}$ intervals')
+    axis.set_xlabel('Time (hr)', fontsize=13)
+    axis.set_ylabel(column_names_unit[row['col']], fontsize=13)
+    p_lb, p_ub = row['p_lb'], row['p_ub']
+    min_p_value = np.min((np.min(p_lb_vals), np.min(p_ub_vals)))
+
+    axis.legend()
+
+    if save_fig:
+        figtitle = f"{row['col']}_hyp_{index}_lo{lo}_one_sided"
+        plt.savefig(f"{results_directory}/longitudinal/{row['col']}_rej{rejected}/{figtitle}.pdf", format="pdf", bbox_inches='tight')  
+        plt.close()
+    return rejected
+
+
+def generate_longitudinal_plots_combined(index, row, p_values, results_directory, total_hypotheses, lo):
+    fig, axis = plt.subplots(1, 2, figsize=(20,5))
+    generate_longitudinal_plots_of_raw_values(index, row, p_values, args.image_export_dir, fig=fig, axis=axis[0])
+    rejected = generate_longitudinal_plots_one_sided(index, row, p_values, args.image_export_dir, total_hypotheses=total_hypotheses, lo=lo, fig=fig, axis=axis[1])
+    figtitle = f"{args.col_name}_hyp_{index}_both_lo"
+    plt.tight_layout()
+    plt.savefig(f"{args.image_export_dir}/longitudinal/{args.col_name}_rej{rejected}/{figtitle}.pdf", format="pdf", bbox_inches='tight')  
+    plt.close()
+
 
 def main(args):
 
@@ -355,12 +480,11 @@ def main(args):
     for index, row in p_values.iterrows():
         generate_hoeff_intervals_one_sided(index, row, args.image_export_dir, total_hypotheses=len(p_vals), lo=True)
         generate_hoeff_intervals_one_sided(index, row, args.image_export_dir, total_hypotheses=len(p_vals), lo=False)
-        # generate_histograms_bootstrapping(index, row, args.image_export_dir, total_hypotheses=len(p_vals), with_hoeff=True)
+        generate_histograms_bootstrapping(index, row, args.image_export_dir, total_hypotheses=len(p_vals), with_hoeff=True)
 
     p_values_complete_trajecs = p_values[(p_values['t']==4)]
     for index, row in p_values_complete_trajecs.iterrows():
-        generate_longitudinal_plots(index, row, p_values, args.image_export_dir)
-        
+        generate_longitudinal_plots_combined(index, row, p_values, args.image_export_dir, total_hypotheses=len(p_vals), lo=True)
 
 
 if __name__ == "__main__":
@@ -374,12 +498,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--results_dir", 
         help="Location of saved results data", 
-        default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/hyp_testing_new_pulse_data_1/revperc",
+        default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/hyp_testing_new_pulse_data_2/revperc",
     )
     parser.add_argument(
         "--image_export_dir", 
         help="Location to save images", 
-        default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/hyp_testing_new_pulse_data_1/images",
+        default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/hyp_testing_new_pulse_data_2/images",
     )
     args = parser.parse_args()
     main(args)
