@@ -111,9 +111,10 @@ def generate_hoeff_intervals(index, row, results_directory, total_hypotheses):
     ysim_interval = np.clip(ysim_interval, row['y_lo'], row['y_up'], )
     yub_interval = np.clip(yub_interval, row['y_lo'], row['y_up'], )
     
-    add_interval(axs[1], ylb_interval, [0,0], caps="||", color="blue")
-    add_interval(axs[1], yub_interval, [1,1], caps="||", color="blue")
-    add_interval(axs[1], ysim_interval, [0.5,0.5], caps="||", color="red")
+    # No longer applicable to two sided intervals
+    # add_interval(axs[1], ylb_interval, [0,0], caps="||", color="blue")
+    # add_interval(axs[1], yub_interval, [1,1], caps="||", color="blue")
+    # add_interval(axs[1], ysim_interval, [0.5,0.5], caps="||", color="red")
     
     axs[1].plot(ylb_interval, [0.5,0.5], lw=6, color='blue', alpha=0.)
     axs[1].plot(yub_interval, [0.5,0.5], lw=6, color='red',  alpha=0.)
@@ -354,8 +355,7 @@ def main(args):
     for index, row in p_values.iterrows():
         generate_hoeff_intervals_one_sided(index, row, args.image_export_dir, total_hypotheses=len(p_vals), lo=True)
         generate_hoeff_intervals_one_sided(index, row, args.image_export_dir, total_hypotheses=len(p_vals), lo=False)
-        generate_hoeff_intervals(index, row, args.image_export_dir, total_hypotheses=len(p_vals))
-        generate_histograms_bootstrapping(index, row, args.image_export_dir, total_hypotheses=len(p_vals), with_hoeff=True)
+        # generate_histograms_bootstrapping(index, row, args.image_export_dir, total_hypotheses=len(p_vals), with_hoeff=True)
 
     p_values_complete_trajecs = p_values[(p_values['t']==4)]
     for index, row in p_values_complete_trajecs.iterrows():
