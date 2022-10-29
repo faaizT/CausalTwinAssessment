@@ -444,7 +444,7 @@ def generate_longitudinal_plots_combined(index, row, p_values, results_directory
     fig, axis = plt.subplots(1, 2, figsize=(20,5))
     generate_longitudinal_plots_of_raw_values(index, row, p_values, args.image_export_dir, fig=fig, axis=axis[0])
     rejected = generate_longitudinal_plots_one_sided(index, row, p_values, args.image_export_dir, total_hypotheses=total_hypotheses, lo=lo, fig=fig, axis=axis[1])
-    figtitle = f"{args.col_name}_hyp_{index}_both_lo"
+    figtitle = f"{args.col_name}_hyp_{index}_both_lo{lo}"
     plt.tight_layout()
     plt.savefig(f"{args.image_export_dir}/longitudinal/{args.col_name}_rej{rejected}/{figtitle}.pdf", format="pdf", bbox_inches='tight')  
     plt.close()
@@ -485,6 +485,7 @@ def main(args):
     p_values_complete_trajecs = p_values[(p_values['t']==4)]
     for index, row in p_values_complete_trajecs.iterrows():
         generate_longitudinal_plots_combined(index, row, p_values, args.image_export_dir, total_hypotheses=len(p_vals), lo=True)
+        generate_longitudinal_plots_combined(index, row, p_values, args.image_export_dir, total_hypotheses=len(p_vals), lo=False)
 
 
 if __name__ == "__main__":
