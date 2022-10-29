@@ -7,7 +7,7 @@ import glob
 import re
 from sklearn.cluster import KMeans
 from scipy.stats import rankdata
-from bareinboim_bounds.Utils import *
+from causal_bounds.Utils import *
 from utils import str2bool
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -352,14 +352,14 @@ def main(args):
     os.makedirs(f"{args.image_export_dir}/longitudinal/{args.col_name}_rejTrue", exist_ok=True)
     os.makedirs(f"{args.image_export_dir}/longitudinal/{args.col_name}_rejFalse", exist_ok=True)
     for index, row in p_values.iterrows():
-        # generate_hoeff_intervals_one_sided(index, row, args.image_export_dir, total_hypotheses=len(p_vals), lo=True)
+        generate_hoeff_intervals_one_sided(index, row, args.image_export_dir, total_hypotheses=len(p_vals), lo=True)
         generate_hoeff_intervals_one_sided(index, row, args.image_export_dir, total_hypotheses=len(p_vals), lo=False)
-        # generate_hoeff_intervals(index, row, args.image_export_dir, total_hypotheses=len(p_vals))
-        # generate_histograms_bootstrapping(index, row, args.image_export_dir, total_hypotheses=len(p_vals), with_hoeff=True)
+        generate_hoeff_intervals(index, row, args.image_export_dir, total_hypotheses=len(p_vals))
+        generate_histograms_bootstrapping(index, row, args.image_export_dir, total_hypotheses=len(p_vals), with_hoeff=True)
 
-    # p_values_complete_trajecs = p_values[(p_values['t']==4)]
-    # for index, row in p_values_complete_trajecs.iterrows():
-    #     generate_longitudinal_plots(index, row, p_values, args.image_export_dir)
+    p_values_complete_trajecs = p_values[(p_values['t']==4)]
+    for index, row in p_values_complete_trajecs.iterrows():
+        generate_longitudinal_plots(index, row, p_values, args.image_export_dir)
         
 
 
