@@ -358,7 +358,7 @@ def main(args):
         if args.load_generated_sim:
             sim_data = pd.read_csv("/data/ziz/taufiq/export-dir/pulse-data-processed-augmented.csv")
         else:
-            sim_data = pd.read_csv("/data/ziz/taufiq/export-dir/pulse_data_all_actions_combined.csv")
+            sim_data = pd.read_csv("/data/ziz/taufiq/export-dir/pulse_data_all_actions_combined_2.csv")
     else:
         sim_data = load_biogears_data(args.sim_path, MIMICtable)
 
