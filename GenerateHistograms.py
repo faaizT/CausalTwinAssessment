@@ -74,7 +74,26 @@ def get_hoeffding_bounds(index, row, alpha=0.05):
     ysim_lb = np.mean(np.clip(row['ysim_values'], ylo, yup)) - delta_sim
     ysim_ub = np.mean(np.clip(row['ysim_values'], ylo, yup)) + delta_sim
     return [ylb_lb , ylb_ub], [ysim_lb, ysim_ub], [yub_lb, yub_ub]
-    
+
+
+def add_interval_vertical(ax, xdata, ydata, color, caps="  ", label=None, which='twin'):
+    if which == 'twin':
+        plotline1, caplines1, barlinecols1 = ax.errorbar(x=xdata[0], y=(ydata[0] + ydata[1])/2, yerr=(ydata[1]-ydata[0])/2, color=color, capsize=3,
+                linestyle="None",
+                marker="s", markersize=7, mfc=color, mec=color, label=label, alpha=0.5, elinewidth=2.5)
+        caplines1[1].set_marker('_')
+        caplines1[1].set_markersize(20)
+    elif which == 'lo':
+        plotline1, caplines1, barlinecols1 = ax.errorbar(x=xdata[0], y=(ydata[0] + ydata[1])/2, yerr=(ydata[1]-ydata[0])/2, color=color, capsize=3,
+                linestyle="None",
+                marker="s", markersize=7, mfc=color, mec=color, label=label, alpha=0.5, uplims=True, elinewidth=2.5)
+    else:
+        plotline1, caplines1, barlinecols1 = ax.errorbar(x=xdata[0], y=(ydata[0] + ydata[1])/2, yerr=(ydata[1]-ydata[0])/2, color=color, capsize=3,
+                linestyle="None",
+                marker="s", markersize=7, mfc=color, mec=color, label=label, alpha=0.5, lolims=True, elinewidth=2.5)
+    caplines1[0].set_marker('_')
+    caplines1[0].set_markersize(20)
+
 
 def add_interval(ax, xdata, ydata, color, left, caps="  ",):
     line = ax.add_line(mpl.lines.Line2D(xdata, ydata, color=color, linewidth=4, alpha=0.4),)
@@ -147,7 +166,7 @@ def generate_hoeff_intervals(index, row, results_directory, total_hypotheses):
 
 
 def generate_hoeff_intervals_one_sided(index, row, results_directory, total_hypotheses, lo=True):
-    fig, axs = plt.subplots(2, 1, figsize=(6,7), gridspec_kw={'height_ratios': [6, 1]})
+    fig, axs = plt.subplots(2, 1, figsize=(8,7), gridspec_kw={'height_ratios': [6, 1]})
     plt.style.use('ggplot')
 
     axs[0].hist(row['yobs_values'], label='$Y(A_{1:t})$', density=True, alpha=0.4, bins='auto', color='blue')
@@ -189,7 +208,7 @@ def generate_hoeff_intervals_one_sided(index, row, results_directory, total_hypo
 
     axs[0].legend(fontsize=16, ) 
 
-    axs[1].set_xlabel('Hoeffdings Intervals', fontsize=20)
+    axs[1].set_xlabel("Hoeffding's Intervals", fontsize=20)
     axs[0].tick_params(axis='both', which='major', labelsize=20)
     axs[0].tick_params(axis='both', which='minor', labelsize=20)
     axs[1].tick_params(axis='both', which='major', labelsize=20)
@@ -376,6 +395,127 @@ def generate_longitudinal_plots_of_raw_values(index, row, p_values, results_dire
         plt.close()
 
 
+def generate_longitudinal_intervals(index, row, p_values, results_directory, total_hypotheses, fig=None, axis=None):
+    a = row['actions']
+    age = row['age']
+    gender = row['gender']
+    x_t = row['x_t']
+    
+    y_twin = []
+    y_twin_lb = []
+    y_twin_ub = []
+    y_obs = []
+    y_obs_lb = []
+    y_obs_ub = []
+    y_obs_std = []
+    p_lb_vals = []
+    p_ub_vals = []
+    rejected = False
+
+    save_fig = fig is None
+    if save_fig:
+        fig, axis = plt.subplots(1, 1, figsize=(10,6))
+
+    for t in range(1, 5):
+        p_values_filtered = p_values[(p_values['gender'] == gender) & (p_values['age'] == age) & (p_values['actions'] == a[:t]) & (p_values['x_t'] == x_t[:t])  & (p_values['t'] == t)]
+        ylb_interval, ysim_interval, yub_interval = get_hoeffding_bounds(index, row=p_values_filtered.iloc[0], alpha=0.05/total_hypotheses)
+        if t == 1:
+            add_interval_vertical(axis, [t-0.02, t-0.02], [ylb_interval[0], ylb_interval[1]], caps="__", color="blue", label='$Q_{lo}$', which='lo')
+            add_interval_vertical(axis, [t+0.02,t+0.02], [ysim_interval[0] , ysim_interval[1]], caps="__", color="red", label='$\widehat{Q}$',  which='twin')
+            add_interval_vertical(axis, [t-0.02, t-0.02], [yub_interval[0], yub_interval[1]], caps="__", color="purple", label='$Q_{up}$', which='up')
+        else:
+            add_interval_vertical(axis, [t-0.02, t-0.02], [ylb_interval[0], ylb_interval[1]], caps="__", color="blue",  which='lo')
+            add_interval_vertical(axis, [t+0.02,t+0.02], [ysim_interval[0] , ysim_interval[1]], caps="__", color="red", which='twin')
+            add_interval_vertical(axis, [t-0.02, t-0.02], [yub_interval[0], yub_interval[1]], caps="__", color="purple", which='up')
+        if not rejected:
+            rejected = ylb_interval[0] > ysim_interval[1] or yub_interval[1] < ysim_interval[0]
+    
+    plt.style.use('fivethirtyeight')
+    axis.set_xlabel('Time (hr)', fontsize=20)
+    axis.legend(fontsize=20, ncol=3)
+
+    axis.set_xticks(range(1, 5))
+    plt.tight_layout()
+
+    if save_fig:
+        figtitle = f"{row['col']}_hyp_{index}_intervals"
+        plt.savefig(f"{results_directory}/longitudinal/{row['col']}_rej{rejected}/{figtitle}.pdf", format="pdf", bbox_inches='tight')  
+        plt.close()
+
+    return rejected
+
+
+def generate_longitudinal_plots_of_average_values(index, row, p_values, results_directory, total_hypotheses, caption=False, fig=None, axis=None):
+    a = row['actions']
+    age = row['age']
+    gender = row['gender']
+    x_t = row['x_t']
+    
+    y_twin = []
+    y_twin_lb = []
+    y_twin_ub = []
+    y_obs = []
+    y_obs_lb = []
+    y_obs_ub = []
+    y_obs_std = []
+    p_lb_vals = []
+    p_ub_vals = []
+    rejected = False
+    save_fig = fig is None
+    if save_fig:
+        fig, axis = plt.subplots(1, 1, figsize=(7,5))
+    plt.style.use('fivethirtyeight')
+
+    for t in range(1, 5):
+        p_values_filtered = p_values[(p_values['gender'] == gender) & (p_values['age'] == age) & (p_values['actions'] == a[:t]) & (p_values['x_t'] == x_t[:t])  & (p_values['t'] == t)]
+        ylb_interval, ysim_interval, yub_interval = get_hoeffding_bounds(index, row=p_values_filtered.iloc[0], alpha=0.05/total_hypotheses)
+        p_lb_vals.append(p_values_filtered['p_lb'].values[0])
+        p_ub_vals.append(p_values_filtered['p_ub'].values[0])
+        y_twin.append(np.mean(p_values_filtered['Sim_exp_y'].values[0]))
+        y_twin_lb.append(ysim_interval[0])
+        y_twin_ub.append(ysim_interval[1])
+        y_obs.append(np.mean(p_values_filtered['yobs_values'].values[0]))
+        std_error_obs = 2*np.std(p_values_filtered['yobs_values'].values[0])/np.sqrt(len(p_values_filtered['yobs_values'].values[0]))
+        y_obs_lb.append(np.mean(p_values_filtered['yobs_values'].values[0]) - std_error_obs)
+        y_obs_ub.append(np.mean(p_values_filtered['yobs_values'].values[0]) + std_error_obs)
+        if t == 1:
+            add_interval_vertical(axis, [t, t], [ylb_interval[0], ylb_interval[1]], caps="__", color=sns.color_palette("mako", 10)[5], label='$Q_{lo}$', which='lo')
+            add_interval_vertical(axis, [t, t], [yub_interval[0], yub_interval[1]], caps="__", color="purple", label='$Q_{up}$', which='up')
+        else:
+            add_interval_vertical(axis, [t, t], [ylb_interval[0], ylb_interval[1]], caps="__", color=sns.color_palette("mako", 10)[5], which='lo')
+            add_interval_vertical(axis, [t, t], [yub_interval[0], yub_interval[1]], caps="__", color="purple", which='up')
+        if not rejected:
+            rejected = ylb_interval[0] > ysim_interval[1] or yub_interval[1] < ysim_interval[0]
+
+    x = [1, 2, 3, 4]
+    axis.plot(x, y_twin, color = 'red', label="$\hat{Q}^{twin}$", alpha=0.4)
+    axis.fill_between(x, y_twin_lb, y_twin_ub, color='red', alpha = 0.2)
+    axis.plot(x, y_obs, color = 'blue', label="$\hat{Q}^{obs}$", alpha=0.4)
+    axis.fill_between(x, y_obs_lb, y_obs_ub, color='blue', alpha=0.2)
+    axis.set_xlabel('Time (hr)', fontsize=20)
+
+    if caption:
+        axis.set_ylabel(column_names_unit[row['col']], fontsize=20)
+    p_lb, p_ub = row['p_lb'], row['p_ub']
+    min_p_value = np.min((np.min(p_lb_vals), np.min(p_ub_vals)))
+
+    axis.legend(fontsize=16)
+    axis.set_xticks(range(1, 5))
+    axis.legend(fontsize=13, )
+    axis.legend(fontsize=13, )    
+    axis.tick_params(axis='both', which='major', labelsize=13)
+    axis.tick_params(axis='both', which='minor', labelsize=13)
+    axis.tick_params(axis='both', which='major', labelsize=13)
+    axis.tick_params(axis='both', which='minor', labelsize=13)
+
+    plt.tight_layout()
+
+    if save_fig:
+        figtitle = f"{row['col']}_hyp_{index}_caption_{caption}"
+        plt.savefig(f"{results_directory}/longitudinal/{row['col']}_rej{rejected}/{figtitle}.pdf", format="pdf", bbox_inches='tight')  
+        plt.close()
+
+
 def generate_longitudinal_plots_one_sided(index, row, p_values, results_directory, total_hypotheses, lo, fig=None, axis=None):
     a = row['actions']
     age = row['age']
@@ -440,11 +580,11 @@ def generate_longitudinal_plots_one_sided(index, row, p_values, results_director
     return rejected
 
 
-def generate_longitudinal_plots_combined(index, row, p_values, results_directory, total_hypotheses, lo):
-    fig, axis = plt.subplots(1, 2, figsize=(20,5))
-    generate_longitudinal_plots_of_raw_values(index, row, p_values, args.image_export_dir, fig=fig, axis=axis[0])
-    rejected = generate_longitudinal_plots_one_sided(index, row, p_values, args.image_export_dir, total_hypotheses=total_hypotheses, lo=lo, fig=fig, axis=axis[1])
-    figtitle = f"{args.col_name}_hyp_{index}_both_lo{lo}"
+def generate_longitudinal_plots_combined(index, row, p_values, results_directory, total_hypotheses):
+    fig, axis = plt.subplots(1, 2, figsize=(15,5), gridspec_kw={'width_ratios': [3, 2]})
+    generate_longitudinal_plots_of_average_values(index, row, p_values, args.image_export_dir, total_hypotheses, fig=fig, axis=axis[0])
+    rejected = generate_longitudinal_intervals(index, row, p_values, args.image_export_dir, total_hypotheses=total_hypotheses, fig=fig, axis=axis[1])
+    figtitle = f"{args.col_name}_hyp_{index}_longitudinal"
     plt.tight_layout()
     plt.savefig(f"{args.image_export_dir}/longitudinal/{args.col_name}_rej{rejected}/{figtitle}.pdf", format="pdf", bbox_inches='tight')  
     plt.close()
@@ -484,8 +624,7 @@ def main(args):
 
     p_values_complete_trajecs = p_values[(p_values['t']==4)]
     for index, row in p_values_complete_trajecs.iterrows():
-        generate_longitudinal_plots_combined(index, row, p_values, args.image_export_dir, total_hypotheses=len(p_vals), lo=True)
-        generate_longitudinal_plots_combined(index, row, p_values, args.image_export_dir, total_hypotheses=len(p_vals), lo=False)
+        generate_longitudinal_plots_of_average_values(index, row, p_values, args.image_export_dir, caption=True, total_hypotheses=len(p_vals))
 
 
 if __name__ == "__main__":
