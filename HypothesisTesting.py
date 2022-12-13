@@ -42,74 +42,7 @@ column_names_unit = {
     "HR": "Heart Rate (1/min)",
 }
 
-
-def write_to_file(file_name, col_name, num_rejected, total_hypotheses, sofa_bin):
-    with open(file_name, "a", 1) as f:
-        f.write(
-            col_name
-            + ","
-            + str(num_rejected)
-            + ","
-            + str(total_hypotheses)
-            + ","
-            + str(sofa_bin)
-            + os.linesep
-        )
-
-
-def load_pulse_data(sim_path, MIMICtable, load_generated):
-    column_mappings = {
-        "Albumin - BloodConcentration (mg/L)": "Albumin",
-        "ArterialCarbonDioxidePressure (mmHg)": "paCO2",
-        "ArterialOxygenPressure (mmHg)": "paO2",
-        "Bicarbonate - BloodConcentration (mg/L)": "HCO3",
-        "BloodPH (None)": "Arterial_pH",
-        "Calcium - BloodConcentration (mg/L)": "Calcium",
-        "Chloride - BloodConcentration (mg/L)": "Chloride",
-        "Creatinine - BloodConcentration (mg/L)": "Creatinine",
-        "DiastolicArterialPressure (mmHg)": "DiaBP",
-        "Glucose - BloodConcentration (mg/L)": "Glucose",
-        "Lactate - BloodConcentration (mg/L)": "Arterial_lactate",
-        "MeanArterialPressure (mmHg)": "MeanBP",
-        "Potassium - BloodConcentration (mg/L)": "Potassium",
-        "RespirationRate (1/min)": "RR",
-        "SkinTemperature (degC)": "Temp_C",
-        "Sodium - BloodConcentration (mg/L)": "Sodium",
-        "SystolicArterialPressure (mmHg)": "SysBP",
-        "WhiteBloodCellCount (ct/uL)": "WBC_count",
-        "HeartRate (1/min)": "HR",
-    }
-    extension = "final_.csv"
-    all_filenames = [i for i in glob.glob(f"{args.sim_path}/*{extension}")]
-    if load_generated:
-        all_filenames += [
-            i for i in glob.glob(f"{args.sim_path}/synthetic_data/*{extension}")
-        ]
-
-    logging.info(f"Total number of simulated trajectories: {len(all_filenames)}")
-    sim_data = pd.concat([pd.read_csv(f) for f in all_filenames])
-    sim_data = sim_data.rename(columns={"id": "icustay_id"})
-    sim_data["icustay_id"] = sim_data["icustay_id"].astype(int)
-    sim_data = sim_data.reset_index(drop=True)
-    sim_data = sim_data.sort_values(
-        by=["icustay_id", "SimulationTime(s)"], ignore_index=True
-    )
-    sim_data["bloc"] = np.arange(len(sim_data)) % 5 + 1
-
-    sim_rename = {}
-    for k, v in column_mappings.items():
-        sim_rename.update({k: f"{v}"})
-
-    sim_data = sim_data.rename(columns=sim_rename)
-    sim_data = sim_data.merge(
-        MIMICtable[["gender", "age", "Weight_kg", "icustay_id", "bloc"]],
-        left_on=["icustay_id", "bloc"],
-        right_on=["icustay_id", "bloc"],
-    )
-    return sim_data
-
-
-def load_pulse_data_new(sim_path, MIMICtable):
+def load_pulse_data(sim_path, MIMICtable):
     column_mappings = {
         "Albumin - BloodConcentration (mg/L)": "Albumin",
         "ArterialCarbonDioxidePressure (mmHg)": "paCO2",
@@ -149,68 +82,6 @@ def load_pulse_data_new(sim_path, MIMICtable):
     sim_data = sim_data.merge(MIMICtable[["icustay_id", "age"]].drop_duplicates(inplace=False),left_on=["icustay_id",], right_on=["icustay_id",], sort=False, how='left')
     sim_data.sort_values(by=['order'], inplace=True)
     return sim_data
-
-
-def load_biogears_data(sim_path, MIMICtable):
-    column_mappings = {
-        "Albumin-BloodConcentration(ug/mL)": "Albumin",
-        "ArterialCarbonDioxidePressure(mmHg)": "paCO2",
-        "ArterialOxygenPressure(mmHg)": "paO2",
-        "Bicarbonate-BloodConcentration(ug/mL)": "HCO3",
-        "ArterialBloodPH": "Arterial_pH",
-        "Calcium-BloodConcentration(ug/mL)": "Calcium",
-        "Chloride-BloodConcentration(ug/mL)": "Chloride",
-        "Creatinine-BloodConcentration(ug/mL)": "Creatinine",
-        "DiastolicArterialPressure(mmHg)": "DiaBP",
-        "Glucose-BloodConcentration(ug/mL)": "Glucose",
-        "Lactate-BloodConcentration(ug/mL)": "Arterial_lactate",
-        "MeanArterialPressure(mmHg)": "MeanBP",
-        "Potassium-BloodConcentration(ug/mL)": "Potassium",
-        "RespirationRate(1/min)": "RR",
-        "SkinTemperature(degC)": "Temp_C",
-        "Sodium-BloodConcentration(ug/mL)": "Sodium",
-        "SystolicArterialPressure(mmHg)": "SysBP",
-        "WhiteBloodCellCount(ct/uL)": "WBC_count",
-        "HeartRate(1/min)": "HR",
-    }
-    extension = ".csv"
-    all_filenames = [i for i in glob.glob(f"{args.sim_path}/*{extension}")]
-    biogears_data = pd.DataFrame()
-    for f in all_filenames:
-        if os.path.getsize(f) > 0:
-            df = pd.read_csv(f)
-            m = re.search("SimulateMIMIC_(.+?)_.csv", f)
-            if m:
-                icustay_id = m.group(1)
-                df["icustay_id"] = int(icustay_id)
-            biogears_data = biogears_data.append(df, ignore_index=True)
-
-    times = [600.02, 3600.02, 7200.02, 10800.02, 14400.02]
-    biogears_data = biogears_data[biogears_data["Time(s)"].isin(times)].reset_index(
-        drop=True
-    )
-    biogears_data.loc["icustay_id"] = biogears_data["icustay_id"].astype(int)
-    icustayids = []
-    for icustay_id in biogears_data["icustay_id"].unique():
-        if (biogears_data["icustay_id"] == icustay_id).sum() == 5:
-            icustayids.append(icustay_id)
-    biogears_data = biogears_data[
-        biogears_data["icustay_id"].isin(icustayids)
-    ].reset_index(drop=True)
-    biogears_data = biogears_data.sort_values(
-        by=["icustay_id", "Time(s)"], ignore_index=True
-    )
-    biogears_data["bloc"] = np.arange(len(biogears_data)) % 5 + 1
-    biogears_rename = {}
-    for k, v in column_mappings.items():
-        biogears_rename.update({k: f"{v}"})
-    biogears_data = biogears_data.rename(columns=biogears_rename)
-    biogears_data = biogears_data.merge(
-        MIMICtable[["gender", "age", "Weight_kg", "icustay_id", "bloc"]],
-        left_on=["icustay_id", "bloc"],
-        right_on=["icustay_id", "bloc"],
-    )
-    return biogears_data
 
 
 def create_action_bins(MIMICtable):
@@ -273,20 +144,8 @@ def create_action_bins(MIMICtable):
     return MIMICtable
 
 
-def load_mimic_data(obs_path, load_generated):
+def load_mimic_data(obs_path):
     MIMICtable = pd.read_csv(obs_path + "/MIMIC-1hourly-length-5-combined.csv")
-    if load_generated:
-        logging.info("Using VAE generated observational data for hypothesis testing")
-        MIMIC_generated_males = pd.read_csv(
-            obs_path + "/MIMIC-generated-length-5-gender-0.0.csv"
-        )
-        MIMIC_generated_females = pd.read_csv(
-            obs_path + "/MIMIC-generated-length-5-gender-1.0.csv"
-        )
-        MIMICtable = pd.concat(
-            [MIMICtable, MIMIC_generated_males, MIMIC_generated_females],
-            ignore_index=True,
-        )
     MIMICtable = MIMICtable.sort_values(by=["icustay_id", "bloc"], ignore_index=True)
     age_ranked = rankdata(MIMICtable["age"]) / len(MIMICtable)
     age_bins = np.floor((age_ranked + 0.2499999999) * 4)
@@ -324,7 +183,7 @@ def get_actions_gender_age_df(trajectories):
 
 
 def load_observational_data_and_split(args, load=False):
-    MIMICtable = load_mimic_data(args.obs_path, args.load_generated)
+    MIMICtable = load_mimic_data(args.obs_path)
     if load:
         MIMIC_data_held_back = pd.read_csv(args.obs_path + "/MIMIC-1hourly-held-back.csv")
         MIMIC_data_used = pd.read_csv(args.obs_path + "/MIMIC-1hourly-not-held-back.csv")
@@ -343,90 +202,34 @@ def load_observational_data_and_split(args, load=False):
 
 def main(args):
     np.random.seed(0)
-    if args.saved_dir is not None:
-        logging.info(f"Using saved processed data from dir {args.saved_dir}")
-    else:
-        logging.info("Not using saved data")
 
     MIMICtable, MIMIC_data_held_back, MIMIC_data_used, actions_df = load_observational_data_and_split(args, load=True)
-
-    if not args.load_generated:
-        MIMICtable_generated = load_mimic_data(args.obs_path, load_generated=True)
-    else:
-        MIMICtable_generated = MIMICtable.copy()
-    if args.sim_name == "pulse":
-        if args.load_generated_sim:
-            sim_data = pd.read_csv("/data/ziz/taufiq/export-dir/pulse-data-processed-augmented.csv")
-        else:
-            sim_data = pd.read_csv("/data/ziz/taufiq/export-dir/pulse_data_all_actions_combined_2.csv")
-    else:
-        sim_data = load_biogears_data(args.sim_path, MIMICtable)
+    sim_data = pd.read_csv(args.sim_data_path)
 
     logging.info(f"Outcome: {args.col_name}")
-    if args.saved_dir is not None:
-        (
-            num_rej_hyps,
-            p_values,
-            rej_hyps,
-            total_hypotheses,
-            pruned_hypotheses,
-            trajec_actions,
-            sim_trajec_actions,
-        ) = do_hypothesis_testing_saved(
-            args.col_name,
-            args.saved_dir,
-            MIMICtable, 
-            MIMIC_data_held_back, 
-            MIMIC_data_used, 
-            sim_data,
-            args.sofa_bin,
-            args.use_kmeans,
-            args.reverse_percentile,
-            args.heoffdings,
-            args.pruning,
-            args.discretised_outcome,
-        )
-    else:
-        (
-            num_rej_hyps,
-            p_values,
-            rej_hyps,
-            total_hypotheses,
-            pruned_hypotheses,
-            trajec_actions,
-            sim_trajec_actions,
-        ) = do_hypothesis_testing(
-            args.col_name,
-            MIMICtable, 
-            MIMIC_data_held_back, 
-            MIMIC_data_used, 
-            sim_data,
-            args.col_bin_num,
-            args.hyp_test_dir,
-            args.use_kmeans,
-            args.reverse_percentile,
-            args.heoffdings,
-            args.pruning,
-            args.discretised_outcome,
-        )
-
-    write_to_file(
-        f"{args.hyp_test_dir}/rej_hyp_nums_hoeff{args.heoffdings}.csv",
-        args.col_name,
+    (
         num_rej_hyps,
+        p_values,
+        rej_hyps,
         total_hypotheses,
-        args.sofa_bin,
+        pruned_hypotheses,
+        trajec_actions,
+        sim_trajec_actions,
+    ) = do_hypothesis_testing(
+        args.col_name,
+        MIMICtable, 
+        MIMIC_data_held_back, 
+        MIMIC_data_used, 
+        sim_data,
+        args.col_bin_num,
+        args.hyp_test_dir,
+        args.use_kmeans,
+        args.reverse_percentile,
+        args.heoffdings,
     )
-    if args.sofa_bin is None:
-        rej_hyps.to_csv(f"{args.hyp_test_dir}/rej_hyps_{args.col_name}_hoeff{args.heoffdings}.csv")
-        p_values.to_csv(f"{args.hyp_test_dir}/p_values_{args.col_name}_hoeff{args.heoffdings}.csv")
-    else:
-        rej_hyps.to_csv(
-            f"{args.hyp_test_dir}/rej_hyps_sofabin_{args.sofa_bin}_{args.col_name}_hoeff{args.heoffdings}.csv"
-        )
-        p_values.to_csv(
-            f"{args.hyp_test_dir}/p_values_sofabin_{args.sofa_bin}_{args.col_name}_hoeff{args.heoffdings}.csv"
-        )
+
+    rej_hyps.to_csv(f"{args.hyp_test_dir}/rej_hyps_{args.col_name}_hoeff{args.heoffdings}.csv")
+    p_values.to_csv(f"{args.hyp_test_dir}/p_values_{args.col_name}_hoeff{args.heoffdings}.csv")
     pruned_hypotheses.to_csv(f"{args.hyp_test_dir}/pruned_hyps_{args.col_name}_hoeff{args.heoffdings}.csv")
 
 
@@ -439,9 +242,6 @@ if __name__ == "__main__":
         required=True,
     )
     parser.add_argument(
-        "--sim_name", help="Simulator name (pulse/biogears)", type=str, default="pulse"
-    )
-    parser.add_argument(
         "--col_bin_num", help="number of column bins", type=int, default=5
     )
     parser.add_argument(
@@ -450,37 +250,14 @@ if __name__ == "__main__":
         default="/data/ziz/taufiq/export-dir",
     )
     parser.add_argument(
-        "--sim_path",
+        "--sim_data_path",
         help="path to sim data directory",
-        default="/data/ziz/not-backed-up/taufiq/pulse-simulated-data-all-actions",
+        default="/data/ziz/taufiq/export-dir/pulse_data_all_actions_combined_2.csv",
     )
     parser.add_argument(
         "--hyp_test_dir",
         help="Directory to save hypothesis test info",
         default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/dry-run",
-    )
-    parser.add_argument(
-        "--saved_dir", 
-        help="Location of saved processed data", 
-        default=None,
-    )
-    parser.add_argument(
-        "--sofa_bin",
-        help="Splits data into SOFA bins before running hypothesis tests",
-        default=None,
-        type=int,
-    )
-    parser.add_argument(
-        "--load_generated",
-        help="Use VAE generated observational data for hypothesis testing",
-        default="False",
-        type=str2bool,
-    )
-    parser.add_argument(
-        "--load_generated_sim",
-        help="Use sim data generated using approximate x0 for hypothesis testing",
-        default="False",
-        type=str2bool,
     )
     parser.add_argument(
         "--heoffdings",
@@ -500,24 +277,6 @@ if __name__ == "__main__":
         type=str2bool,
         default="False",
     )
-    parser.add_argument(
-        "--pruning",
-        help="Use pruning with Hoeffding",
-        type=str2bool,
-        default="False",
-    )
-    parser.add_argument(
-        "--discretised_outcome",
-        help="Run tests on discretised outcomes",
-        type=str2bool,
-        default="False",
-    )
     args = parser.parse_args()
 
-    if not os.path.exists(f"{args.hyp_test_dir}/rej_hyp_nums.csv"):
-        with open(f"{args.hyp_test_dir}/rej_hyp_nums.csv", "w") as f:
-            f.write(
-                "Outcome Y,# rejected hypotheses,Total # hypotheses,SOFA bin"
-                + os.linesep
-            )
     main(args)
