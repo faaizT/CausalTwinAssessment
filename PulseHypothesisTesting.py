@@ -7,7 +7,7 @@ import glob
 import re
 from sklearn.cluster import KMeans
 from scipy.stats import rankdata
-from causal_bounds.Utils import *
+from pulse.Utils import *
 from utils import str2bool
 
 nra = 5
