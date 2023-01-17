@@ -1,5 +1,6 @@
 import argparse
 import logging
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import os
@@ -339,6 +340,9 @@ def main(args):
     np.random.seed(0)
     if args.col_name not in column_names_unit:
         raise ValueError(f"Column name must be one of {list(column_names_unit.keys())}")
+
+    # Creating the folder to save results if it doesn't exist
+    Path(args.hyp_test_dir).mkdir(parents=True, exist_ok=True)
 
     (
         MIMICtable,

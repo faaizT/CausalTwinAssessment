@@ -100,28 +100,21 @@ def add_interval(
 def generate_hoeff_intervals_one_sided(
     index, row, results_directory, total_hypotheses, lo=True
 ):
-    fig, axs = plt.subplots(
-        2, 1, figsize=(8, 7), gridspec_kw={"height_ratios": [4, 1]}, sharex=True
-    )
+    fig, axs = plt.subplots(2, 1, figsize=(8, 7), gridspec_kw={"height_ratios": [4, 1]})
     plt.style.use("ggplot")
-    min_x = min(
-        np.quantile(row["yobs_values"], 0.001), np.quantile(row["ysim_values"], 0.001)
-    )
-    max_x = max(
-        np.quantile(row["yobs_values"], 0.95), np.quantile(row["ysim_values"], 0.95)
-    )
+    min_x, max_x = row["y_lo"], row["y_up"]
 
     axs[0].hist(
-        np.clip(row["yobs_values"], min_x, max_x),
-        label="$Y(A_{1:t})$",
+        np.array(row["yobs_values"]),
+        label="Obs. data",
         density=True,
         alpha=0.4,
         bins="auto",
         color="blue",
     )
     axs[0].hist(
-        np.clip(row["ysim_values"], min_x, max_x),
-        label="$\widehat{Y}(a_{1:t})$",
+        row["ysim_values"],
+        label="Twin data",
         density=True,
         alpha=0.4,
         bins="auto",
@@ -197,7 +190,6 @@ def generate_hoeff_intervals_one_sided(
         axs[1].set_yticks([0, 0.5])
         axs[1].set_yticklabels(["$Q_{up}$", "$\widehat{Q}$"])
 
-    axs[0].set_xlim([min_x, max_x])
     axs[0].set_title(column_names_unit[row["col"]], fontsize=20)
     axs[0].set_yticks([])
     axs[0].grid(False)
@@ -462,7 +454,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--image_export_dir",
         help="Location to save images",
-        default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/hyp_testing_new_pulse_data_2/images_truncated",
+        default="/data/ziz/not-backed-up/taufiq/HypothesisTesting/hyp_testing_new_pulse_data_2/images_truncated2",
     )
     args = parser.parse_args()
     main(args)
