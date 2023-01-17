@@ -1,5 +1,9 @@
 # CausalTwinAssessment
-This code implements our methodology for Causal Assessment of Digital Twins.  
+This code implements our methodology for Causal Assessment of Digital Twins.
+
+## Installation
+To install this package, run the following command:  
+```pip install -r requirements.txt```
 
 ## Pulse Case Study
 Below we outline steps to replicate the Pulse Case Study.
